@@ -290,6 +290,7 @@ export const action = async ({ request }) => {
                 email: foundOrder.customer.email,
                 lineItems: combinedLineItems,
                 shippingAddress: shippingAddress, // Use the normalized shipping address
+                tags: ["combined"], // Add the 'combined' tag
               },
             },
           }
@@ -367,6 +368,7 @@ export const action = async ({ request }) => {
                 email: foundOrder.customer.email,
                 lineItems: preorderLineItems,
                 shippingAddress: shippingAddress, // Use the normalized shipping address
+                tags: ["combined"], // Add the 'combined' tag
               },
             },
           }
