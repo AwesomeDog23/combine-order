@@ -556,6 +556,17 @@ export default function Index() {
                   <List.Item key={order.id}>
                     Order #{order.name} - {order.totalPrice} - Placed on:{" "}
                     {new Date(order.createdAt).toLocaleDateString()}
+                    {/* Add button to search this order */}
+                    <Button
+                      onClick={() =>
+                        fetcher.submit(
+                          { orderNumber: order.name },
+                          { method: "POST" }
+                        )
+                      }
+                    >
+                      View Order
+                    </Button>
                   </List.Item>
                 ))}
               </List>
@@ -605,8 +616,17 @@ export default function Index() {
               <List>
                 {customerOrders.map((order) => (
                   <List.Item key={order.id}>
-                    Order #{order.orderNumber} - {order.totalPrice} - Placed
-                    on: {new Date(order.createdAt).toLocaleDateString()}
+                    <Text variant="headingLg">
+                      Order #{order.orderNumber} - {order.totalPrice} - Placed
+                      on: {new Date(order.createdAt).toLocaleDateString()}
+                    </Text>
+                    <List>
+                      {order.lineItems.map((item) => (
+                        <List.Item key={item.id}>
+                          {item.name} - Quantity: {item.quantity}
+                        </List.Item>
+                      ))}
+                    </List>
                   </List.Item>
                 ))}
               </List>
@@ -621,36 +641,6 @@ export default function Index() {
           Combine Orders
         </Button>
       )}
-
-{!isLoading && fetcher.data && fetcher.data.success && (
-  <BlockStack gap="500">
-    <Text>{fetcher.data.message}</Text>
-
-    {fetcher.data.completedOrder && (
-      <Button
-        primary
-        onClick={() => {
-          const orderId = fetcher.data.completedOrder.id.split("/").pop(); // Extract the numeric ID
-          window.open(`shopify://admin/orders/${orderId}`, "_blank");
-        }}
-      >
-        View New Order{fetcher.data.completedOrder.name}
-      </Button>
-    )}
-
-    {fetcher.data.preorderCompletedOrder && (
-      <Button
-        primary
-        onClick={() => {
-          const preorderOrderId = fetcher.data.preorderCompletedOrder.id.split("/").pop(); // Extract the numeric ID
-          window.open(`shopify://admin/orders/${preorderOrderId}`, "_blank");
-        }}
-      >
-        View Preorder Order{fetcher.data.preorderCompletedOrder.name}
-      </Button>
-    )}
-  </BlockStack>
-)}
 
       {!isLoading && fetcher.data && !unfulfilledOrder && !error && (
         <Text>No unfulfilled orders found.</Text>
