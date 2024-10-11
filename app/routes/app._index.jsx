@@ -268,19 +268,22 @@ export const action = async ({ request }) => {
       }));
 
       // Include 'Free and Easy Returns or Exchanges' items with quantity 1
-      freeAndEasyRegularVariantIds.forEach((variantId) => {
-        combinedLineItems.push({
-          variantId,
-          quantity: 1,
+      if (combinedLineItems.length > 0) {
+        freeAndEasyRegularVariantIds.forEach((variantId) => {
+          combinedLineItems.push({
+            variantId,
+            quantity: 1,
+          });
         });
-      });
-
-      freeAndEasyPreorderVariantIds.forEach((variantId) => {
-        preorderLineItems.push({
-          variantId,
-          quantity: 1,
+      }
+      if (preorderLineItems.length > 0) {
+        freeAndEasyRegularVariantIds.forEach((variantId) => {
+          preorderLineItems.push({
+            variantId,
+            quantity: 1,
+          });
         });
-      });
+      }
 
       console.log("Combined Line Items:", combinedLineItems);
       console.log("Preorder Line Items:", preorderLineItems);
