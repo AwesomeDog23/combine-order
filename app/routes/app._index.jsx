@@ -603,30 +603,6 @@ export default function Index() {
 
       <Layout>
         <Layout.Section>
-          {ordersWithTag.length > 0 && (
-            <Card title='Orders with tag "combine this"'>
-              <List>
-                {ordersWithTag.map((order) => (
-                  <List.Item key={order.id}>
-                    Order #{order.name} - {order.totalPrice} - Placed on:{" "}
-                    {new Date(order.createdAt).toLocaleDateString()}
-                    {/* Add button to search this order */}
-                    <Button
-                      onClick={() =>
-                        fetcher.submit(
-                          { orderNumber: order.name },
-                          { method: "POST" }
-                        )
-                      }
-                    >
-                      View Order
-                    </Button>
-                  </List.Item>
-                ))}
-              </List>
-            </Card>
-          )}
-
           <Card sectioned>
             <form onSubmit={handleSubmit}>
               <TextField
@@ -699,6 +675,29 @@ export default function Index() {
       {!isLoading && fetcher.data && !unfulfilledOrder && !error && (
         <Text>No unfulfilled orders found.</Text>
       )}
+          {ordersWithTag.length > 0 && (
+            <Card title='Orders with tag "combine this"'>
+              <List>
+                {ordersWithTag.map((order) => (
+                  <List.Item key={order.id}>
+                    Order #{order.name} - {order.totalPrice} - Placed on:{" "}
+                    {new Date(order.createdAt).toLocaleDateString()}
+                    {/* Add button to search this order */}
+                    <Button
+                      onClick={() =>
+                        fetcher.submit(
+                          { orderNumber: order.name },
+                          { method: "POST" }
+                        )
+                      }
+                    >
+                      View Order
+                    </Button>
+                  </List.Item>
+                ))}
+              </List>
+            </Card>
+          )}
     </Page>
   );
 }
