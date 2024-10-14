@@ -672,35 +672,35 @@ export default function Index() {
         </Button>
       )}
 
-      {/* Display buttons for new orders if they are created */}
-      {!isLoading && fetcher.data?.success && (
-        <BlockStack>
-          {fetcher.data.completedOrder && (
-            <Button
-              primary
-              onClick={() =>
-                window.open(`shopify:admin/orders/${orderId}`, "_blank")
-              }
-            >
-              View Combined Order #{fetcher.data.completedOrder.name}
-            </Button>
-          )}
+{!isLoading && fetcher.data && fetcher.data.success && (
+  <BlockStack gap="500">
+    <Text>{fetcher.data.message}</Text>
 
-          {fetcher.data.preorderCompletedOrder && (
-            <Button
-              primary
-              onClick={() =>
-                window.open(
-                  `shopify:admin/orders/${preorderOrderId}`,
-                  "_blank"
-                )
-              }
-            >
-              View Preorder #{fetcher.data.preorderCompletedOrder.name}
-            </Button>
-          )}
-        </BlockStack>
-      )}
+    {fetcher.data.completedOrder && (
+      <Button
+        primary
+        onClick={() => {
+          const orderId = fetcher.data.completedOrder.id.split("/").pop(); // Extract the numeric ID
+          window.open(`shopify:admin/orders/${orderId}`, "_blank");
+        }}
+      >
+        View New Order #{fetcher.data.completedOrder.name}
+      </Button>
+    )}
+
+    {fetcher.data.preorderCompletedOrder && (
+      <Button
+        primary
+        onClick={() => {
+          const preorderOrderId = fetcher.data.preorderCompletedOrder.id.split("/").pop(); // Extract the numeric ID
+          window.open(`shopify:admin/orders/${preorderOrderId}`, "_blank");
+        }}
+      >
+        View Preorder Order #{fetcher.data.preorderCompletedOrder.name}
+      </Button>
+    )}
+  </BlockStack>
+)}
 
       {!isLoading && fetcher.data && !unfulfilledOrder && !error && (
         <Text>No unfulfilled orders found.</Text>
