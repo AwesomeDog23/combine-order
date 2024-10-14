@@ -10,6 +10,7 @@ import {
   BlockStack,
   List,
   TextField,
+  Spinner,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -619,7 +620,7 @@ export default function Index() {
         </Layout.Section>
       </Layout>
 
-      {isLoading && <p>Loading...</p>}
+      {isLoading && <Spinner accessibilityLabel="Loading orders" size="large" />}
 
       {!isLoading && error && <Text color="critical">{error}</Text>}
 
@@ -667,67 +668,70 @@ export default function Index() {
 
       {/* Show Combine Orders button if applicable */}
       {combineOrdersVisible && (
-        <Button primary onClick={handleCombineOrders}>
+        <Button fullWidth primary onClick={handleCombineOrders}>
           Combine Orders
         </Button>
       )}
 
-{!isLoading && fetcher.data && fetcher.data.success && (
-  <BlockStack gap="500">
-    <Text>{fetcher.data.message}</Text>
+      {!isLoading && fetcher.data && fetcher.data.success && (
+        <BlockStack gap="500">
+          <Text>{fetcher.data.message}</Text>
 
-    {fetcher.data.completedOrder && (
-      <Button
-        primary
-        onClick={() => {
-          const orderId = fetcher.data.completedOrder.id.split("/").pop(); // Extract the numeric ID
-          window.open(`shopify:admin/orders/${orderId}`, "_blank");
-        }}
-      >
-        View New Order #{fetcher.data.completedOrder.name}
-      </Button>
-    )}
+          {fetcher.data.completedOrder && (
+            <Button
+              primary
+              onClick={() => {
+                const orderId = fetcher.data.completedOrder.id.split("/").pop();
+                window.open(`shopify:admin/orders/${orderId}`, "_blank");
+              }}
+            >
+              View New Order #{fetcher.data.completedOrder.name}
+            </Button>
+          )}
 
-    {fetcher.data.preorderCompletedOrder && (
-      <Button
-        primary
-        onClick={() => {
-          const preorderOrderId = fetcher.data.preorderCompletedOrder.id.split("/").pop(); // Extract the numeric ID
-          window.open(`shopify:admin/orders/${preorderOrderId}`, "_blank");
-        }}
-      >
-        View Preorder Order #{fetcher.data.preorderCompletedOrder.name}
-      </Button>
-    )}
-  </BlockStack>
-)}
+          {fetcher.data.preorderCompletedOrder && (
+            <Button
+              primary
+              onClick={() => {
+                const preorderOrderId = fetcher.data.preorderCompletedOrder.id
+                  .split("/")
+                  .pop();
+                window.open(`shopify:admin/orders/${preorderOrderId}`, "_blank");
+              }}
+            >
+              View Preorder Order #{fetcher.data.preorderCompletedOrder.name}
+            </Button>
+          )}
+        </BlockStack>
+      )}
 
       {!isLoading && fetcher.data && !unfulfilledOrder && !error && (
         <Text>No unfulfilled orders found.</Text>
       )}
-          {ordersWithTag.length > 0 && (
-            <Card title='Orders with tag "combine this"'>
-              <List>
-                {ordersWithTag.map((order) => (
-                  <List.Item key={order.id}>
-                    Order #{order.name} - {order.totalPrice} - Placed on:{" "}
-                    {new Date(order.createdAt).toLocaleDateString()}
-                    {/* Add button to search this order */}
-                    <Button
-                      onClick={() =>
-                        fetcher.submit(
-                          { orderNumber: order.name },
-                          { method: "POST" }
-                        )
-                      }
-                    >
-                      View Order
-                    </Button>
-                  </List.Item>
-                ))}
-              </List>
-            </Card>
-          )}
+
+      {ordersWithTag.length > 0 && (
+        <Card title='Orders with tag "combine this"'>
+          <List>
+            {ordersWithTag.map((order) => (
+              <List.Item key={order.id}>
+                Order #{order.name} - {order.totalPrice} - Placed on:{" "}
+                {new Date(order.createdAt).toLocaleDateString()}
+                {/* Add button to search this order */}
+                <Button
+                  onClick={() =>
+                    fetcher.submit(
+                      { orderNumber: order.name },
+                      { method: "POST" }
+                    )
+                  }
+                >
+                  View Order
+                </Button>
+              </List.Item>
+            ))}
+          </List>
+        </Card>
+      )}
     </Page>
   );
 }
