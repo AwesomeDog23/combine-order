@@ -672,13 +672,6 @@ export default function Index() {
         </Button>
       )}
 
-            {/* Show Combine Orders button if applicable */}
-            {combineOrdersVisible && (
-        <Button primary onClick={handleCombineOrders}>
-          Combine Orders
-        </Button>
-      )}
-
       {/* Display buttons for new orders if they are created */}
       {!isLoading && fetcher.data?.success && (
         <BlockStack>
@@ -686,7 +679,7 @@ export default function Index() {
             <Button
               primary
               onClick={() =>
-                window.open(`shopify:admin/orders/${fetcher.data.completedOrder.id}`, "_blank")
+                window.open(`shopify:admin/orders/${orderId}`, "_blank")
               }
             >
               View Combined Order #{fetcher.data.completedOrder.name}
@@ -698,7 +691,7 @@ export default function Index() {
               primary
               onClick={() =>
                 window.open(
-                  `shopify:admin/orders/${fetcher.data.preorderCompletedOrder.id}`,
+                  `shopify:admin/orders/${preorderOrderId}`,
                   "_blank"
                 )
               }
