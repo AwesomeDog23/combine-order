@@ -672,6 +672,43 @@ export default function Index() {
         </Button>
       )}
 
+            {/* Show Combine Orders button if applicable */}
+            {combineOrdersVisible && (
+        <Button primary onClick={handleCombineOrders}>
+          Combine Orders
+        </Button>
+      )}
+
+      {/* Display buttons for new orders if they are created */}
+      {!isLoading && fetcher.data?.success && (
+        <BlockStack>
+          {fetcher.data.completedOrder && (
+            <Button
+              primary
+              onClick={() =>
+                window.open(`shopify:admin/orders/${fetcher.data.completedOrder.id}`, "_blank")
+              }
+            >
+              View Combined Order #{fetcher.data.completedOrder.name}
+            </Button>
+          )}
+
+          {fetcher.data.preorderCompletedOrder && (
+            <Button
+              primary
+              onClick={() =>
+                window.open(
+                  `shopify:admin/orders/${fetcher.data.preorderCompletedOrder.id}`,
+                  "_blank"
+                )
+              }
+            >
+              View Preorder #{fetcher.data.preorderCompletedOrder.name}
+            </Button>
+          )}
+        </BlockStack>
+      )}
+
       {!isLoading && fetcher.data && !unfulfilledOrder && !error && (
         <Text>No unfulfilled orders found.</Text>
       )}
