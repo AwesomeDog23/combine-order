@@ -3,7 +3,7 @@
 client_id = "d43e43bdac99cfaabd071c040e01809f"
 name = "combine-order"
 handle = "combine-order-3"
-application_url = "https://further-mines-galleries-fr.trycloudflare.com"
+application_url = "https://combine-app-18c1e26d7ea5.herokuapp.com/"
 embedded = true
 
 [build]
@@ -17,9 +17,7 @@ scopes = "read_customers,read_orders,write_draft_orders,write_orders,write_produ
 
 [auth]
 redirect_urls = [
-  "https://further-mines-galleries-fr.trycloudflare.com/auth/callback",
-  "https://further-mines-galleries-fr.trycloudflare.com/auth/shopify/callback",
-  "https://further-mines-galleries-fr.trycloudflare.com/api/auth/callback"
+  "https://combine-app-18c1e26d7ea5.herokuapp.com/auth/callback"
 ]
 
 [webhooks]
