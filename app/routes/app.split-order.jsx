@@ -11,7 +11,6 @@ import {
   List,
   TextField,
   Spinner,
-  Checkbox,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -65,7 +64,6 @@ export const action = async ({ request }) => {
     );
 
     const orderData = await orderResponse.json();
-    
 
     if (!orderData.data.orders.edges.length) {
       return json({ error: "Order not found" });
@@ -78,22 +76,28 @@ export const action = async ({ request }) => {
       return json({ order: foundOrder });
     } else {
       // Proceed to split the order
-      // Get the selected items from formData
-      const selectedVariantIds = formData.getAll("selectedVariantIds[]");
+      const splitQuantities = JSON.parse(formData.get("splitQuantities"));
 
       const selectedItems = [];
       const unselectedItems = [];
-      
+
       foundOrder.lineItems.edges.forEach((itemEdge) => {
         const item = itemEdge.node;
-        console.log(`Processing item: ${item.name}, Variant ID: ${item.variant.id}`);
-      
-        if (selectedVariantIds.includes(item.variant.id)) {
-          console.log("Item selected for first order:", item.name);
-          selectedItems.push(item);
-        } else {
-          console.log("Item selected for second order:", item.name);
-          unselectedItems.push(item);
+        const splitQuantity = splitQuantities[item.variant.id];
+
+        if (splitQuantity > 0) {
+          selectedItems.push({
+            ...item,
+            quantity: splitQuantity,
+          });
+        }
+
+        const remainingQuantity = item.quantity - splitQuantity;
+        if (remainingQuantity > 0) {
+          unselectedItems.push({
+            ...item,
+            quantity: remainingQuantity,
+          });
         }
       });
 
@@ -264,39 +268,39 @@ export const action = async ({ request }) => {
         newOrder2 = completeData2.data.draftOrderComplete.draftOrder.order;
       }
 
-// Cancel the original order
-const cancelOrderResponse = await admin.graphql(
-  `#graphql
-  mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
-    orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
-      job {
-        id
-      }
-      userErrors {
-        field
-        message
-      }
-    }
-  }
-  `,
-  {
-    variables: {
-      orderId: foundOrder.id, // Pass the order ID here
-      reason: "OTHER", // The reason for cancellation
-      refund: false, // Set refund to false as per your needs
-      restock: true, // Set restock to true
-    },
-  }
-);
+      // Cancel the original order
+      const cancelOrderResponse = await admin.graphql(
+        `#graphql
+        mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
+          orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
+            job {
+              id
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        `,
+        {
+          variables: {
+            orderId: foundOrder.id,
+            reason: "OTHER",
+            refund: false,
+            restock: true,
+          },
+        }
+      );
 
-const cancelOrderData = await cancelOrderResponse.json();
-if (cancelOrderData.data.orderCancel.userErrors.length) {
-  return json({
-    error: cancelOrderData.data.orderCancel.userErrors
-      .map((e) => e.message)
-      .join(", "),
-  });
-}
+      const cancelOrderData = await cancelOrderResponse.json();
+      if (cancelOrderData.data.orderCancel.userErrors.length) {
+        return json({
+          error: cancelOrderData.data.orderCancel.userErrors
+            .map((e) => e.message)
+            .join(", "),
+        });
+      }
 
       return json({
         success: true,
@@ -314,7 +318,7 @@ export default function SplitOrderPage() {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const [orderNumber, setOrderNumber] = useState("");
-  const [selectedItems, setSelectedItems] = useState({});
+  const [splitQuantities, setSplitQuantities] = useState({});
 
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
@@ -333,20 +337,21 @@ export default function SplitOrderPage() {
     fetcher.submit({ orderNumber }, { method: "POST" });
   };
 
-  const handleCheckboxChange = (variantId) => (checked) => {
-    setSelectedItems((prevSelectedItems) => ({
-      ...prevSelectedItems,
-      [variantId]: checked,
+  const handleQuantityChange = (variantId) => (value) => {
+    setSplitQuantities((prev) => ({
+      ...prev,
+      [variantId]: parseInt(value, 10) || 0,
     }));
   };
 
   const handleSplitOrder = () => {
-    // Prepare selected item IDs
-    const selectedVariantIds = Object.keys(selectedItems).filter(
-      (variantId) => selectedItems[variantId]
-    );
+    // Prepare the split quantities to send to the server
     fetcher.submit(
-      { orderNumber, splitOrder: "true", "selectedVariantIds[]": selectedVariantIds },
+      {
+        orderNumber,
+        splitOrder: "true",
+        splitQuantities: JSON.stringify(splitQuantities),
+      },
       { method: "POST" }
     );
   };
@@ -381,9 +386,7 @@ export default function SplitOrderPage() {
         </Layout.Section>
       </Layout>
 
-      {isLoading && (
-        <Spinner accessibilityLabel="Loading order" size="large" />
-      )}
+      {isLoading && <Spinner accessibilityLabel="Loading order" size="large" />}
 
       {!isLoading && error && <Text color="critical">{error}</Text>}
 
@@ -395,11 +398,16 @@ export default function SplitOrderPage() {
                 const item = itemEdge.node;
                 return (
                   <List.Item key={item.id}>
-<Checkbox
-  label={`${item.name} - Quantity: ${item.quantity}`}
-  checked={selectedItems[item.variant.id] || false}
-  onChange={handleCheckboxChange(item.variant.id)}
-/>
+                    <Text>{`${item.name} - Quantity: ${item.quantity}`}</Text>
+                    <TextField
+                      label="Quantity for First Order"
+                      value={splitQuantities[item.variant.id] || ""}
+                      onChange={handleQuantityChange(item.variant.id)}
+                      placeholder="Enter quantity"
+                      type="number"
+                      min={0}
+                      max={item.quantity}
+                    />
                   </List.Item>
                 );
               })}
