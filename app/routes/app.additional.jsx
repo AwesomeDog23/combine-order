@@ -265,9 +265,9 @@ const cancelOrderResponse = await admin.graphql(
   `#graphql
   mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
     orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
-      order {
+      job {
         id
-        name
+        status
       }
       userErrors {
         field
