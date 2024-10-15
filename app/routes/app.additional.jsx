@@ -267,7 +267,6 @@ const cancelOrderResponse = await admin.graphql(
     orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
       job {
         id
-        status
       }
       userErrors {
         field
