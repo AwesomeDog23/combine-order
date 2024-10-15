@@ -666,7 +666,6 @@ export default function Index() {
         </BlockStack>
       )}
 
-      {/* Show Combine Orders button if applicable */}
       {combineOrdersVisible && (
         <Button fullWidth primary onClick={handleCombineOrders}>
           Combine Orders
