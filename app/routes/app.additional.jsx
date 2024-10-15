@@ -65,6 +65,7 @@ export const action = async ({ request }) => {
     );
 
     const orderData = await orderResponse.json();
+    
 
     if (!orderData.data.orders.edges.length) {
       return json({ error: "Order not found" });
@@ -78,7 +79,7 @@ export const action = async ({ request }) => {
     } else {
       // Proceed to split the order
       // Get the selected items from formData
-      const selectedItemIds = formData.getAll("selectedItems[]");
+      const selectedVariantIds = formData.getAll("selectedVariantIds[]");
 
       // Separate the line items into two groups
       const selectedItems = [];
@@ -86,7 +87,7 @@ export const action = async ({ request }) => {
 
       foundOrder.lineItems.edges.forEach((itemEdge) => {
         const item = itemEdge.node;
-        if (selectedItemIds.includes(item.id)) {
+        if (selectedVariantIds.includes(item.variant.id)) {
           selectedItems.push(item);
         } else {
           unselectedItems.push(item);
@@ -329,20 +330,20 @@ export default function SplitOrderPage() {
     fetcher.submit({ orderNumber }, { method: "POST" });
   };
 
-  const handleCheckboxChange = (itemId) => (checked) => {
+  const handleCheckboxChange = (variantId) => (checked) => {
     setSelectedItems({
       ...selectedItems,
-      [itemId]: checked,
+      [variantId]: checked,
     });
   };
 
   const handleSplitOrder = () => {
     // Prepare selected item IDs
-    const selectedItemIds = Object.keys(selectedItems).filter(
-      (itemId) => selectedItems[itemId]
+    const selectedVariantIds = Object.keys(selectedItems).filter(
+      (variantId) => selectedItems[variantId]
     );
     fetcher.submit(
-      { orderNumber, splitOrder: "true", "selectedItems[]": selectedItemIds },
+      { orderNumber, splitOrder: "true", "selectedVariantIds[]": selectedVariantIds },
       { method: "POST" }
     );
   };
@@ -391,11 +392,11 @@ export default function SplitOrderPage() {
                 const item = itemEdge.node;
                 return (
                   <List.Item key={item.id}>
-                    <Checkbox
-                      label={`${item.name} - Quantity: ${item.quantity}`}
-                      checked={selectedItems[item.id] || false}
-                      onChange={handleCheckboxChange(item.id)}
-                    />
+<Checkbox
+  label={`${item.name} - Quantity: ${item.quantity}`}
+  checked={selectedItems[item.variant.id] || false}
+  onChange={handleCheckboxChange(item.variant.id)}
+/>
                   </List.Item>
                 );
               })}
