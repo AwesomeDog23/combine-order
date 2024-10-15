@@ -260,33 +260,40 @@ export const action = async ({ request }) => {
         newOrder2 = completeData2.data.draftOrderComplete.draftOrder.order;
       }
 
-      // Cancel the original order
-      const cancelOrderResponse = await admin.graphql(
-        `#graphql
-        mutation orderCancel($id: ID!, $reason: OrderCancelReason!) {
-          orderCancel(id: $id, reason: $reason) {
-            order {
-              id
-              name
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-      `,
-        { variables: { id: foundOrder.id, reason: "OTHER" } }
-      );
-
-      const cancelOrderData = await cancelOrderResponse.json();
-      if (cancelOrderData.data.orderCancel.userErrors.length) {
-        return json({
-          error: cancelOrderData.data.orderCancel.userErrors
-            .map((e) => e.message)
-            .join(", "),
-        });
+// Cancel the original order
+const cancelOrderResponse = await admin.graphql(
+  `#graphql
+  mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
+    orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
+      order {
+        id
+        name
       }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+  `,
+  {
+    variables: {
+      orderId: foundOrder.id, // Pass the order ID here
+      reason: "OTHER", // The reason for cancellation
+      refund: false, // Set refund to false as per your needs
+      restock: true, // Set restock to true
+    },
+  }
+);
+
+const cancelOrderData = await cancelOrderResponse.json();
+if (cancelOrderData.data.orderCancel.userErrors.length) {
+  return json({
+    error: cancelOrderData.data.orderCancel.userErrors
+      .map((e) => e.message)
+      .join(", "),
+  });
+}
 
       return json({
         success: true,
