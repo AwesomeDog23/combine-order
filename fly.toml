@@ -1,0 +1,28 @@
+# fly.toml app configuration file generated for combine-order-quiet-forest-6306 on 2024-10-10T15:45:02-06:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'combine-order-quiet-forest-6306'
+primary_region = 'sjc'
+
+[build]
+
+[env]
+  PORT = '3000'
+  SCOPES = 'read_customers,read_orders,write_draft_orders,write_orders,write_products'
+  SHOPIFY_API_KEY = 'd43e43bdac99cfaabd071c040e01809f'
+  SHOPIFY_APP_URL = 'https://combine-order-tj.fly.dev'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
