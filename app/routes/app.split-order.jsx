@@ -81,15 +81,18 @@ export const action = async ({ request }) => {
       // Get the selected items from formData
       const selectedVariantIds = formData.getAll("selectedVariantIds[]");
 
-      // Separate the line items into two groups
       const selectedItems = [];
       const unselectedItems = [];
-
+      
       foundOrder.lineItems.edges.forEach((itemEdge) => {
         const item = itemEdge.node;
+        console.log(`Processing item: ${item.name}, Variant ID: ${item.variant.id}`);
+      
         if (selectedVariantIds.includes(item.variant.id)) {
+          console.log("Item selected for first order:", item.name);
           selectedItems.push(item);
         } else {
+          console.log("Item selected for second order:", item.name);
           unselectedItems.push(item);
         }
       });
@@ -108,8 +111,6 @@ export const action = async ({ request }) => {
       const customerId = foundOrder.customer?.id;
       const email = foundOrder.customer?.email;
       const shippingAddress = foundOrder.shippingAddress;
-      console.log("Selected Line Items: ", selectedLineItems);
-      console.log("Unselected Line Items: ", unselectedLineItems);
 
       // Create the first draft order with selected items
       let newOrder1 = null;
@@ -333,10 +334,10 @@ export default function SplitOrderPage() {
   };
 
   const handleCheckboxChange = (variantId) => (checked) => {
-    setSelectedItems({
-      ...selectedItems,
+    setSelectedItems((prevSelectedItems) => ({
+      ...prevSelectedItems,
       [variantId]: checked,
-    });
+    }));
   };
 
   const handleSplitOrder = () => {
