@@ -521,7 +521,6 @@ export const action = async ({ request }) => {
       }
     }
 
-    // Get unfulfilled items from the found order
     const unfulfilledItems = foundOrder.lineItems.edges
       .filter((itemEdge) => itemEdge.node.fulfillmentStatus === "UNFULFILLED")
       .map((itemEdge) => ({
