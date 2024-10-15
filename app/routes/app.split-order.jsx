@@ -75,17 +75,18 @@ export const action = async ({ request }) => {
       // Return the order data
       return json({ order: foundOrder });
     } else {
-      // Proceed to split the order
       const splitQuantities = JSON.parse(formData.get("splitQuantities"));
 
       const selectedItems = [];
       const unselectedItems = [];
 
+      // Split the items based on the provided split quantities
       foundOrder.lineItems.edges.forEach((itemEdge) => {
         const item = itemEdge.node;
-        const splitQuantity = splitQuantities[item.variant.id];
+        const splitQuantity = splitQuantities[item.variant.id] || 0;
 
         if (splitQuantity > 0) {
+          // Push items with the split quantity to the first order
           selectedItems.push({
             ...item,
             quantity: splitQuantity,
@@ -94,12 +95,20 @@ export const action = async ({ request }) => {
 
         const remainingQuantity = item.quantity - splitQuantity;
         if (remainingQuantity > 0) {
+          // Push remaining items to the second order
           unselectedItems.push({
             ...item,
             quantity: remainingQuantity,
           });
         }
       });
+
+      // If there are no unselected items, handle the error here
+      if (unselectedItems.length === 0) {
+        return json({
+          error: "There are no items left to create the second order.",
+        });
+      }
 
       // Prepare line items for the new orders
       const selectedLineItems = selectedItems.map((item) => ({
@@ -192,7 +201,7 @@ export const action = async ({ request }) => {
         newOrder1 = completeData1.data.draftOrderComplete.draftOrder.order;
       }
 
-      // Create the second draft order with unselected items
+      // Ensure unselected items always result in a second order
       let newOrder2 = null;
       if (unselectedLineItems.length > 0) {
         const draftOrderResponse2 = await admin.graphql(
@@ -234,7 +243,7 @@ export const action = async ({ request }) => {
           });
         }
 
-        // Complete the draft order
+        // Complete the second draft order
         const draftOrderId2 = draftOrderData2.data.draftOrderCreate.draftOrder.id;
         const completeResponse2 = await admin.graphql(
           `#graphql
@@ -268,7 +277,7 @@ export const action = async ({ request }) => {
         newOrder2 = completeData2.data.draftOrderComplete.draftOrder.order;
       }
 
-      // Cancel the original order
+      // Cancel the original order only if both orders are created
       const cancelOrderResponse = await admin.graphql(
         `#graphql
         mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
