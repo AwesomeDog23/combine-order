@@ -108,6 +108,8 @@ export const action = async ({ request }) => {
       const customerId = foundOrder.customer?.id;
       const email = foundOrder.customer?.email;
       const shippingAddress = foundOrder.shippingAddress;
+      console.log("Selected Line Items: ", selectedLineItems);
+      console.log("Unselected Line Items: ", unselectedLineItems);
 
       // Create the first draft order with selected items
       let newOrder1 = null;
