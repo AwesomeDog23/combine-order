@@ -82,10 +82,12 @@ export const action = async ({ request }) => {
   // Get selectedOrders from formData
   const selectedOrders = JSON.parse(formData.get("selectedOrders") || "[]");
 
-  // Helper function to normalize address for comparison (case-insensitive)
-  const normalizeAddress = (address) => {
+  // Helper function to normalize address for comparison (case-insensitive) and include the customer's name
+  const normalizeAddress = (address, customer) => {
     if (!address) return null;
     return {
+      firstName: customer?.firstName || '', // Add customer's first name
+      lastName: customer?.lastName || '',   // Add customer's last name
       address1: address.address1?.toLowerCase().trim(),
       address2: address.address2?.toLowerCase().trim(),
       city: address.city?.toLowerCase().trim(),
@@ -98,6 +100,8 @@ export const action = async ({ request }) => {
   const addressesMatch = (address1, address2) => {
     if (!address1 || !address2) return false;
     return (
+      address1.firstName === address2.firstName &&
+      address1.lastName === address2.lastName &&
       address1.address1 === address2.address1 &&
       address1.address2 === address2.address2 &&
       address1.city === address2.city &&
@@ -134,6 +138,8 @@ export const action = async ({ request }) => {
               customer {
                 id
                 email
+                firstName
+                lastName
               }
               shippingAddress {
                 address1
@@ -160,9 +166,10 @@ export const action = async ({ request }) => {
     const foundOrder = orderData.data.orders.edges[0].node;
     const customerId = foundOrder.customer.id;
     const shippingAddress = foundOrder.shippingAddress; // Capture the shipping address
+    const customerInfo = { firstName: foundOrder.customer.firstName, lastName: foundOrder.customer.lastName };
 
-    // Normalize the shipping address of the found order for comparison
-    const normalizedOriginalAddress = normalizeAddress(shippingAddress);
+    // Normalize the shipping address of the found order for comparison, including the customer name
+    const normalizedOriginalAddress = normalizeAddress(shippingAddress, customerInfo);
 
     // Extract the numeric part of the customer ID from the GID format
     const numericCustomerId = customerId.split("/").pop();
@@ -219,7 +226,7 @@ export const action = async ({ request }) => {
         quantity: itemEdge.node.quantity,
         variantId: itemEdge.node.variant?.id, // Use optional chaining
       })),
-      shippingAddress: normalizeAddress(edge.node.shippingAddress), // Normalize shipping address for comparison
+      shippingAddress: normalizeAddress(edge.node.shippingAddress, customerInfo), // Normalize shipping address for comparison
     }));
 
     // If selectedOrders is provided, filter customerOrders
@@ -302,176 +309,158 @@ export const action = async ({ request }) => {
 
       // Create a new draft order with combined items (regular items)
       if (combinedLineItems.length > 0) {
-        const hasCombinedNonFreeAndEasyItems = combinedLineItems.some(
-          (item) => !freeAndEasyRegularVariantIds.has(item.variantId)
+        const draftOrderResponse = await admin.graphql(
+          `#graphql
+          mutation draftOrderCreate($input: DraftOrderInput!) {
+            draftOrderCreate(input: $input) {
+              draftOrder {
+                id
+                invoiceUrl
+                status
+                totalPrice
+                order {
+                  id
+                  name
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+          {
+            variables: {
+              input: {
+                customerId: foundOrder.customer.id,
+                email: foundOrder.customer.email,
+                lineItems: combinedLineItems,
+                shippingAddress: normalizedOriginalAddress, // Use the updated address with customer name
+                tags: ["combined"], // Add the 'combined' tag
+              },
+            },
+          }
         );
 
-        if (hasCombinedNonFreeAndEasyItems || customerOrders.length > 1) {
-          const draftOrderResponse = await admin.graphql(
-            `#graphql
-            mutation draftOrderCreate($input: DraftOrderInput!) {
-              draftOrderCreate(input: $input) {
-                draftOrder {
-                  id
-                  invoiceUrl
-                  status
-                  totalPrice
-                  order {
-                    id
-                    name
-                  }
-                }
-                userErrors {
-                  field
-                  message
-                }
-              }
-            }
-          `,
-            {
-              variables: {
-                input: {
-                  customerId: foundOrder.customer.id,
-                  email: foundOrder.customer.email,
-                  lineItems: combinedLineItems,
-                  shippingAddress: shippingAddress, // Use the normalized shipping address
-                  tags: ["combined"], // Add the 'combined' tag
-                },
-              },
-            }
+        const draftOrderData = await draftOrderResponse.json(); // Parse the JSON data
+
+        if (draftOrderData.data.draftOrderCreate.userErrors.length) {
+          console.error("User Errors:", draftOrderData.data.draftOrderCreate.userErrors);
+          throw new Error(
+            draftOrderData.data.draftOrderCreate.userErrors
+              .map((e) => e.message)
+              .join(", ")
           );
-
-          const draftOrderData = await draftOrderResponse.json(); // Parse the JSON data
-
-          if (draftOrderData.data.draftOrderCreate.userErrors.length) {
-            console.error("User Errors:", draftOrderData.data.draftOrderCreate.userErrors);
-            throw new Error(
-              draftOrderData.data.draftOrderCreate.userErrors
-                .map((e) => e.message)
-                .join(", ")
-            );
-          }
-
-          newDraftOrder = draftOrderData.data.draftOrderCreate.draftOrder;
-
-          // Complete the draft order
-          const draftOrderCompleteResponse = await admin.graphql(
-            `#graphql
-            mutation draftOrderComplete($id: ID!) {
-              draftOrderComplete(id: $id) {
-                draftOrder {
-                  id
-                  order {
-                    id
-                  }
-                }
-              }
-            }
-            `,
-            { variables: { id: newDraftOrder.id } }
-          );
-
-          const draftOrderCompleteData = await draftOrderCompleteResponse.json();
-
-          if (draftOrderCompleteData.errors) {
-            console.error("Error completing draft order:", draftOrderCompleteData.errors);
-            throw new Error(
-              draftOrderCompleteData.errors.map((e) => e.message).join(", ")
-            );
-          }
-
-          completedOrder = draftOrderCompleteData.data.draftOrderComplete.draftOrder.order;
-        } else {
-          console.log("No regular items to create a combined order for regular items.");
-          newDraftOrder = null;
         }
+
+        newDraftOrder = draftOrderData.data.draftOrderCreate.draftOrder;
+
+        // Complete the draft order
+        const draftOrderCompleteResponse = await admin.graphql(
+          `#graphql
+          mutation draftOrderComplete($id: ID!) {
+            draftOrderComplete(id: $id) {
+              draftOrder {
+                id
+                order {
+                  id
+                }
+              }
+            }
+          }
+          `,
+          { variables: { id: newDraftOrder.id } }
+        );
+
+        const draftOrderCompleteData = await draftOrderCompleteResponse.json();
+
+        if (draftOrderCompleteData.errors) {
+          console.error("Error completing draft order:", draftOrderCompleteData.errors);
+          throw new Error(
+            draftOrderCompleteData.errors.map((e) => e.message).join(", ")
+          );
+        }
+
+        completedOrder = draftOrderCompleteData.data.draftOrderComplete.draftOrder.order;
       }
 
       // Create a new draft order with 'PREORDER' items if any
       if (preorderLineItems.length > 0) {
-        const hasPreorderNonFreeAndEasyItems = preorderLineItems.some(
-          (item) => !freeAndEasyPreorderVariantIds.has(item.variantId)
+        const preorderDraftOrderResponse = await admin.graphql(
+          `#graphql
+          mutation draftOrderCreate($input: DraftOrderInput!) {
+            draftOrderCreate(input: $input) {
+              draftOrder {
+                id
+                invoiceUrl
+                status
+                totalPrice
+                order {
+                  id
+                  name
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+          {
+            variables: {
+              input: {
+                customerId: foundOrder.customer.id,
+                email: foundOrder.customer.email,
+                lineItems: preorderLineItems,
+                shippingAddress: normalizedOriginalAddress, // Use the updated address with customer name
+                tags: ["combined"], // Add the 'combined' tag
+              },
+            },
+          }
         );
 
-        if (hasPreorderNonFreeAndEasyItems || customerOrders.length > 1) {
-          const preorderDraftOrderResponse = await admin.graphql(
-            `#graphql
-            mutation draftOrderCreate($input: DraftOrderInput!) {
-              draftOrderCreate(input: $input) {
-                draftOrder {
-                  id
-                  invoiceUrl
-                  status
-                  totalPrice
-                  order {
-                    id
-                    name
-                  }
-                }
-                userErrors {
-                  field
-                  message
-                }
-              }
-            }
-          `,
-            {
-              variables: {
-                input: {
-                  customerId: foundOrder.customer.id,
-                  email: foundOrder.customer.email,
-                  lineItems: preorderLineItems,
-                  shippingAddress: shippingAddress, // Use the normalized shipping address
-                  tags: ["combined"], // Add the 'combined' tag
-                },
-              },
-            }
+        const preorderDraftOrderData = await preorderDraftOrderResponse.json();
+
+        if (preorderDraftOrderData.data.draftOrderCreate.userErrors.length) {
+          console.error("User Errors:", preorderDraftOrderData.data.draftOrderCreate.userErrors);
+          throw new Error(
+            preorderDraftOrderData.data.draftOrderCreate.userErrors
+              .map((e) => e.message)
+              .join(", ")
           );
-
-          const preorderDraftOrderData = await preorderDraftOrderResponse.json();
-
-          if (preorderDraftOrderData.data.draftOrderCreate.userErrors.length) {
-            console.error("User Errors:", preorderDraftOrderData.data.draftOrderCreate.userErrors);
-            throw new Error(
-              preorderDraftOrderData.data.draftOrderCreate.userErrors
-                .map((e) => e.message)
-                .join(", ")
-            );
-          }
-
-          preorderDraftOrder = preorderDraftOrderData.data.draftOrderCreate.draftOrder;
-
-          // Complete the preorder draft order
-          const preorderDraftOrderCompleteResponse = await admin.graphql(
-            `#graphql
-            mutation draftOrderComplete($id: ID!) {
-              draftOrderComplete(id: $id) {
-                draftOrder {
-                  id
-                  order {
-                    id
-                  }
-                }
-              }
-            }
-            `,
-            { variables: { id: preorderDraftOrder.id } }
-          );
-
-          const preorderDraftOrderCompleteData = await preorderDraftOrderCompleteResponse.json();
-
-          if (preorderDraftOrderCompleteData.errors) {
-            console.error("Error completing preorder draft order:", preorderDraftOrderCompleteData.errors);
-            throw new Error(
-              preorderDraftOrderCompleteData.errors.map((e) => e.message).join(", ")
-            );
-          }
-
-          preorderCompletedOrder = preorderDraftOrderCompleteData.data.draftOrderComplete.draftOrder.order;
-        } else {
-          console.log("No preorder items to create a combined order for preorder items.");
-          preorderDraftOrder = null;
         }
+
+        preorderDraftOrder = preorderDraftOrderData.data.draftOrderCreate.draftOrder;
+
+        // Complete the preorder draft order
+        const preorderDraftOrderCompleteResponse = await admin.graphql(
+          `#graphql
+          mutation draftOrderComplete($id: ID!) {
+            draftOrderComplete(id: $id) {
+              draftOrder {
+                id
+                order {
+                  id
+                }
+              }
+            }
+          }
+          `,
+          { variables: { id: preorderDraftOrder.id } }
+        );
+
+        const preorderDraftOrderCompleteData = await preorderDraftOrderCompleteResponse.json();
+
+        if (preorderDraftOrderCompleteData.errors) {
+          console.error("Error completing preorder draft order:", preorderDraftOrderCompleteData.errors);
+          throw new Error(
+            preorderDraftOrderCompleteData.errors.map((e) => e.message).join(", ")
+          );
+        }
+
+        preorderCompletedOrder = preorderDraftOrderCompleteData.data.draftOrderComplete.draftOrder.order;
       }
 
       if (newDraftOrder || preorderDraftOrder) {
