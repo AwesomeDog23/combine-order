@@ -11,6 +11,7 @@ import {
   List,
   TextField,
   Spinner,
+  Checkbox, // Added Checkbox import
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -77,6 +78,9 @@ export const action = async ({ request }) => {
   const formData = await request.formData();
   const orderNumber = formData.get("orderNumber");
   const combineOrders = formData.get("combineOrders") === "true"; // Convert to boolean
+
+  // Get selectedOrders from formData
+  const selectedOrders = JSON.parse(formData.get("selectedOrders") || "[]");
 
   // Helper function to normalize address for comparison (case-insensitive)
   const normalizeAddress = (address) => {
@@ -204,7 +208,7 @@ export const action = async ({ request }) => {
 
     const customerOrdersData = await customerOrdersResponse.json(); // Parse the JSON data
 
-    const customerOrders = customerOrdersData.data.orders.edges.map((edge) => ({
+    let customerOrders = customerOrdersData.data.orders.edges.map((edge) => ({
       id: edge.node.id,
       orderNumber: edge.node.name,
       totalPrice: edge.node.totalPrice,
@@ -217,6 +221,11 @@ export const action = async ({ request }) => {
       })),
       shippingAddress: normalizeAddress(edge.node.shippingAddress), // Normalize shipping address for comparison
     }));
+
+    // If selectedOrders is provided, filter customerOrders
+    if (selectedOrders.length > 0) {
+      customerOrders = customerOrders.filter(order => selectedOrders.includes(order.id));
+    }
 
     if (combineOrders && customerOrders.length > 0) {
       // Check if all shipping addresses are the same
@@ -278,7 +287,7 @@ export const action = async ({ request }) => {
         });
       }
       if (preorderLineItems.length > 0) {
-        freeAndEasyRegularVariantIds.forEach((variantId) => {
+        freeAndEasyPreorderVariantIds.forEach((variantId) => {
           preorderLineItems.push({
             variantId,
             quantity: 1,
@@ -553,6 +562,7 @@ export default function Index() {
   const shopify = useAppBridge();
   const [orderNumber, setOrderNumber] = useState("");
   const [combineOrdersVisible, setCombineOrdersVisible] = useState(false);
+  const [selectedOrders, setSelectedOrders] = useState([]); // Added selectedOrders state
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
     fetcher.formMethod === "POST";
@@ -574,7 +584,7 @@ export default function Index() {
   const handleCombineOrders = () => {
     // Trigger a new form submission to combine orders
     fetcher.submit(
-      { orderNumber, combineOrders: "true" },
+      { orderNumber, combineOrders: "true", selectedOrders: JSON.stringify(selectedOrders) },
       { method: "POST" }
     );
   };
@@ -594,8 +604,20 @@ export default function Index() {
     // If customer has multiple orders, show the combine button
     if (customerOrders.length > 1) {
       setCombineOrdersVisible(true);
+      // Initialize selectedOrders with all customer order IDs
+      setSelectedOrders(customerOrders.map(order => order.id));
+    } else {
+      setCombineOrdersVisible(false);
     }
   }, [fetcher.data, error, customerOrders, shopify]);
+
+  const handleOrderSelectionChange = (orderId, checked) => {
+    if (checked) {
+      setSelectedOrders([...selectedOrders, orderId]);
+    } else {
+      setSelectedOrders(selectedOrders.filter(id => id !== orderId));
+    }
+  };
 
   return (
     <Page>
@@ -646,10 +668,11 @@ export default function Index() {
               <List>
                 {customerOrders.map((order) => (
                   <List.Item key={order.id}>
-                    <Text variant="headingLg">
-                      Order #{order.orderNumber} - {order.totalPrice} - Placed
-                      on: {new Date(order.createdAt).toLocaleDateString()}
-                    </Text>
+                    <Checkbox
+                      label={`Order #${order.orderNumber} - ${order.totalPrice} - Placed on: ${new Date(order.createdAt).toLocaleDateString()}`}
+                      checked={selectedOrders.includes(order.id)}
+                      onChange={(checked) => handleOrderSelectionChange(order.id, checked)}
+                    />
                     <List>
                       {order.lineItems.map((item) => (
                         <List.Item key={item.id}>
