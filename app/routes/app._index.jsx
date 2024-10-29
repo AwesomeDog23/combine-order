@@ -167,6 +167,8 @@ export const action = async ({ request }) => {
     const customerId = foundOrder.customer.id;
     const shippingAddress = foundOrder.shippingAddress; // Capture the shipping address
     const customerInfo = { firstName: foundOrder.customer.firstName, lastName: foundOrder.customer.lastName };
+    const firstOrderName = customerOrders[0].orderNumber;
+    const secondOrderName = customerOrders[1].orderNumber;
 
     // Normalize the shipping address of the found order for comparison, including the customer name
     const normalizedOriginalAddress = normalizeAddress(shippingAddress, customerInfo);
@@ -336,8 +338,9 @@ export const action = async ({ request }) => {
                 customerId: foundOrder.customer.id,
                 email: foundOrder.customer.email,
                 lineItems: combinedLineItems,
-                shippingAddress: normalizedOriginalAddress, // Use the updated address with customer name
-                tags: ["combined"], // Add the 'combined' tag
+                shippingAddress: normalizedOriginalAddress,
+                tags: ["combined"],
+                name: firstOrderName, // Assign the name from the first order for regular items
               },
             },
           }
@@ -414,8 +417,9 @@ export const action = async ({ request }) => {
                 customerId: foundOrder.customer.id,
                 email: foundOrder.customer.email,
                 lineItems: preorderLineItems,
-                shippingAddress: normalizedOriginalAddress, // Use the updated address with customer name
-                tags: ["combined"], // Add the 'combined' tag
+                shippingAddress: normalizedOriginalAddress,
+                tags: ["combined"],
+                name: secondOrderName, // Assign the name from the second order for preorder items
               },
             },
           }
