@@ -341,7 +341,6 @@ export const action = async ({ request }) => {
                 lineItems: combinedLineItems,
                 shippingAddress: normalizedOriginalAddress,
                 tags: ["combined"],
-                name: firstOrderName, // Assign the name from the first order for regular items
               },
             },
           }
@@ -420,7 +419,6 @@ export const action = async ({ request }) => {
                 lineItems: preorderLineItems,
                 shippingAddress: normalizedOriginalAddress,
                 tags: ["combined"],
-                name: secondOrderName, // Assign the name from the second order for preorder items
               },
             },
           }
