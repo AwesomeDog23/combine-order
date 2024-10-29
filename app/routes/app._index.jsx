@@ -166,6 +166,7 @@ export const action = async ({ request }) => {
     const normalizedOriginalAddress = normalizeAddress(shippingAddress, customerInfo);
     const numericCustomerId = customerId.split("/").pop();
 
+    // Fetch customer's other open, unfulfilled orders
     const customerOrdersResponse = await admin.graphql(
       `#graphql
       query getCustomerOrders($query: String!) {
@@ -184,6 +185,9 @@ export const action = async ({ request }) => {
                     quantity
                     variant {
                       id
+                      product {
+                        tags
+                      }
                     }
                   }
                 }
@@ -215,6 +219,7 @@ export const action = async ({ request }) => {
         name: itemEdge.node.name,
         quantity: itemEdge.node.quantity,
         variantId: itemEdge.node.variant?.id,
+        productTags: itemEdge.node.variant?.product?.tags || [],
       })),
       shippingAddress: normalizeAddress(edge.node.shippingAddress, customerInfo),
     }));
@@ -224,6 +229,7 @@ export const action = async ({ request }) => {
     }
 
     if (combineOrders && customerOrders.length > 0) {
+      // Check if all shipping addresses match
       for (const order of customerOrders) {
         if (!addressesMatch(normalizedOriginalAddress, order.shippingAddress)) {
           throw new Error(
@@ -232,80 +238,164 @@ export const action = async ({ request }) => {
         }
       }
 
-      const lineItems = customerOrders.flatMap(order =>
-        order.lineItems.map(item => ({
-          title: item.name,
-          quantity: item.quantity,
-          variantId: item.variantId,
-        }))
-      );
+      // Separate line items into preorders and regular orders
+      const preorderLineItems = [];
+      const regularLineItems = [];
 
-      const orderCreateResponse = await admin.graphql(
-        `#graphql
-        mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-          orderCreate(order: $order, options: $options) {
-            order {
-              id
-              name
-              totalTaxSet {
-                shopMoney {
-                  amount
-                  currencyCode
-                }
-              }
-              lineItems(first: 5) {
-                nodes {
-                  variant {
-                    id
+      customerOrders.forEach(order => {
+        order.lineItems.forEach(item => {
+          if (item.productTags.includes('preorder')) {
+            preorderLineItems.push({
+              title: item.name,
+              quantity: item.quantity,
+              variantId: item.variantId,
+            });
+          } else {
+            regularLineItems.push({
+              title: item.name,
+              quantity: item.quantity,
+              variantId: item.variantId,
+            });
+          }
+        });
+      });
+
+      let newRegularOrder = null;
+      let newPreorderOrder = null;
+
+      // Create new regular order if there are regular line items
+      if (regularLineItems.length > 0) {
+        const regularOrderCreateResponse = await admin.graphql(
+          `#graphql
+          mutation OrderCreate($input: OrderInput!) {
+            orderCreate(input: $input) {
+              order {
+                id
+                name
+                totalPriceSet {
+                  shopMoney {
+                    amount
+                    currencyCode
                   }
-                  id
-                  title
-                  quantity
+                }
+                lineItems(first: 5) {
+                  nodes {
+                    variant {
+                      id
+                    }
+                    id
+                    title
+                    quantity
+                  }
                 }
               }
-            }
-            userErrors {
-              field
-              message
+              userErrors {
+                field
+                message
+              }
             }
           }
-        }
-      `,
-        {
-          variables: {
-            order: {
-              lineItems,
-              customerId, // use customerId instead of an embedded customer object
-              shippingAddress: {
-                address1: shippingAddress.address1,
-                address2: shippingAddress.address2,
-                city: shippingAddress.city,
-                country: shippingAddress.country,
-                province: shippingAddress.province,
-                zip: shippingAddress.zip,
+        `,
+          {
+            variables: {
+              input: {
+                lineItems: regularLineItems,
+                customerId,
+                shippingAddress: {
+                  address1: shippingAddress.address1,
+                  address2: shippingAddress.address2,
+                  city: shippingAddress.city,
+                  country: shippingAddress.country,
+                  province: shippingAddress.province,
+                  zip: shippingAddress.zip,
+                },
+                tags: ["combined"],
               },
-              tags: ["combined"],
             },
-            options: {
-              // Include options if needed, or omit this if it's not required
-            },
-          },
-        }
-      );
-
-      const orderCreateData = await orderCreateResponse.json();
-
-      if (orderCreateData.data.orderCreate.userErrors.length) {
-        console.error("User Errors:", orderCreateData.data.orderCreate.userErrors);
-        throw new Error(
-          orderCreateData.data.orderCreate.userErrors
-            .map((e) => e.message)
-            .join(", ")
+          }
         );
+
+        const regularOrderCreateData = await regularOrderCreateResponse.json();
+
+        if (regularOrderCreateData.data.orderCreate.userErrors.length) {
+          console.error("User Errors:", regularOrderCreateData.data.orderCreate.userErrors);
+          throw new Error(
+            regularOrderCreateData.data.orderCreate.userErrors
+              .map((e) => e.message)
+              .join(", ")
+          );
+        }
+
+        newRegularOrder = regularOrderCreateData.data.orderCreate.order;
       }
 
-      const newOrder = orderCreateData.data.orderCreate.order;
+      // Create new preorder order if there are preorder line items
+      if (preorderLineItems.length > 0) {
+        const preorderOrderCreateResponse = await admin.graphql(
+          `#graphql
+          mutation OrderCreate($input: OrderInput!) {
+            orderCreate(input: $input) {
+              order {
+                id
+                name
+                totalPriceSet {
+                  shopMoney {
+                    amount
+                    currencyCode
+                  }
+                }
+                lineItems(first: 5) {
+                  nodes {
+                    variant {
+                      id
+                    }
+                    id
+                    title
+                    quantity
+                  }
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+          {
+            variables: {
+              input: {
+                lineItems: preorderLineItems,
+                customerId,
+                shippingAddress: {
+                  address1: shippingAddress.address1,
+                  address2: shippingAddress.address2,
+                  city: shippingAddress.city,
+                  country: shippingAddress.country,
+                  province: shippingAddress.province,
+                  zip: shippingAddress.zip,
+                },
+                tags: ["combined", "preorder"],
+              },
+            },
+          }
+        );
 
+        const preorderOrderCreateData = await preorderOrderCreateResponse.json();
+
+        if (preorderOrderCreateData.data.orderCreate.userErrors.length) {
+          console.error("User Errors:", preorderOrderCreateData.data.orderCreate.userErrors);
+          throw new Error(
+            preorderOrderCreateData.data.orderCreate.userErrors
+              .map((e) => e.message)
+              .join(", ")
+          );
+        }
+
+        newPreorderOrder = preorderOrderCreateData.data.orderCreate.order;
+      }
+
+      // Cancel original orders
       for (const order of customerOrders) {
         const orderCancelResponse = await admin.graphql(
           `#graphql
@@ -347,8 +437,9 @@ export const action = async ({ request }) => {
 
       return json({
         success: true,
-        message: "New combined order created, and original orders closed successfully",
-        newOrder,
+        message: "New combined orders created, and original orders canceled successfully",
+        completedOrder: newRegularOrder,
+        preorderCompletedOrder: newPreorderOrder,
       });
     }
 
