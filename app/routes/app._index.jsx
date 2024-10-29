@@ -167,8 +167,6 @@ export const action = async ({ request }) => {
     const customerId = foundOrder.customer.id;
     const shippingAddress = foundOrder.shippingAddress; // Capture the shipping address
     const customerInfo = { firstName: foundOrder.customer.firstName, lastName: foundOrder.customer.lastName };
-    const firstOrderName = customerOrders[0].orderNumber;
-    const secondOrderName = customerOrders[1].orderNumber;
 
     // Normalize the shipping address of the found order for comparison, including the customer name
     const normalizedOriginalAddress = normalizeAddress(shippingAddress, customerInfo);
@@ -235,6 +233,9 @@ export const action = async ({ request }) => {
     if (selectedOrders.length > 0) {
       customerOrders = customerOrders.filter(order => selectedOrders.includes(order.id));
     }
+
+    const firstOrderName = customerOrders[0].orderNumber;
+    const secondOrderName = customerOrders[1].orderNumber;
 
     if (combineOrders && customerOrders.length > 0) {
       // Check if all shipping addresses are the same
