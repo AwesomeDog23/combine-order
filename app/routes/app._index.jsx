@@ -79,13 +79,15 @@ export const action = async ({ request }) => {
   const orderNumber = formData.get("orderNumber");
   const combineOrders = formData.get("combineOrders") === "true"; // Convert to boolean
 
+  // Get selectedOrders from formData
   const selectedOrders = JSON.parse(formData.get("selectedOrders") || "[]");
 
+  // Helper function to normalize address for comparison (case-insensitive) and include the customer's name
   const normalizeAddress = (address, customer) => {
     if (!address) return null;
     return {
-      firstName: customer?.firstName || '',
-      lastName: customer?.lastName || '',
+      firstName: customer?.firstName || '', // Add customer's first name
+      lastName: customer?.lastName || '',   // Add customer's last name
       address1: address.address1?.toLowerCase().trim(),
       address2: address.address2?.toLowerCase().trim(),
       city: address.city?.toLowerCase().trim(),
@@ -110,6 +112,7 @@ export const action = async ({ request }) => {
   };
 
   try {
+    // Fetch the order by order number and include variant IDs and shipping address
     const orderResponse = await admin.graphql(
       `#graphql
       query getOrder($query: String!) {
@@ -154,20 +157,24 @@ export const action = async ({ request }) => {
       { variables: { query: `name:${orderNumber}` } }
     );
 
-    const orderData = await orderResponse.json();
+    const orderData = await orderResponse.json(); // Parse the JSON data
+
     if (!orderData.data.orders.edges.length) {
       return json({ error: "Order not found" });
     }
 
     const foundOrder = orderData.data.orders.edges[0].node;
     const customerId = foundOrder.customer.id;
-    const shippingAddress = foundOrder.shippingAddress;
+    const shippingAddress = foundOrder.shippingAddress; // Capture the shipping address
     const customerInfo = { firstName: foundOrder.customer.firstName, lastName: foundOrder.customer.lastName };
 
+    // Normalize the shipping address of the found order for comparison, including the customer name
     const normalizedOriginalAddress = normalizeAddress(shippingAddress, customerInfo);
 
+    // Extract the numeric part of the customer ID from the GID format
     const numericCustomerId = customerId.split("/").pop();
 
+    // Fetch the latest open and unfulfilled orders for the customer
     const customerOrdersResponse = await admin.graphql(
       `#graphql
       query getCustomerOrders($query: String!) {
@@ -206,7 +213,8 @@ export const action = async ({ request }) => {
       { variables: { query: `status:open AND fulfillment_status:unfulfilled AND customer_id:${numericCustomerId}` } }
     );
 
-    const customerOrdersData = await customerOrdersResponse.json();
+    const customerOrdersData = await customerOrdersResponse.json(); // Parse the JSON data
+
     let customerOrders = customerOrdersData.data.orders.edges.map((edge) => ({
       id: edge.node.id,
       orderNumber: edge.node.name,
@@ -216,90 +224,107 @@ export const action = async ({ request }) => {
         id: itemEdge.node.id,
         name: itemEdge.node.name,
         quantity: itemEdge.node.quantity,
-        variantId: itemEdge.node.variant?.id,
+        variantId: itemEdge.node.variant?.id, // Use optional chaining
       })),
-      shippingAddress: normalizeAddress(edge.node.shippingAddress, customerInfo),
+      shippingAddress: normalizeAddress(edge.node.shippingAddress, customerInfo), // Normalize shipping address for comparison
     }));
 
+    // If selectedOrders is provided, filter customerOrders
     if (selectedOrders.length > 0) {
       customerOrders = customerOrders.filter(order => selectedOrders.includes(order.id));
     }
 
+    const firstOrderName = customerOrders[0].orderNumber;
+    const secondOrderName = customerOrders[1].orderNumber;
+
     if (combineOrders && customerOrders.length > 0) {
+      // Check if all shipping addresses are the same
       for (const order of customerOrders) {
         if (!addressesMatch(normalizedOriginalAddress, order.shippingAddress)) {
           throw new Error(
-            `The shipping address for order ${order.orderNumber} does not match the original order's shipping address.`
+            `The shipping address for order ${order.orderNumber} does not match the original order's shipping address. All orders must have the same shipping address to be combined.`
           );
         }
       }
 
-      const lineItems = customerOrders.flatMap(order =>
-        order.lineItems.map(item => ({
-          variantId: item.variantId,
-          quantity: item.quantity,
-        }))
-      );
+      // Aggregate quantities for duplicate variants, separating 'PREORDER' items
+      const variantQuantityMap = {}; // For regular items
+      const preorderVariantQuantityMap = {}; // For 'PREORDER' items
+      const freeAndEasyRegularVariantIds = new Set(); // For "Free and Easy Returns or Exchanges" items in regular items
+      const freeAndEasyPreorderVariantIds = new Set(); // For "Free and Easy Returns or Exchanges" items in preorder items
 
-      const orderCreateResponse = await admin.graphql(
-        `#graphql
-        mutation orderCreate($input: OrderInput!) {
-          orderCreate(input: $input) {
-            order {
-              id
-              name
-            }
-            userErrors {
-              field
-              message
+      customerOrders.forEach((order) => {
+        order.lineItems.forEach((item) => {
+          if (item.variantId) {
+            const isPreorder = item.name.includes('PREORDER');
+            const isFreeAndEasy = item.name.startsWith('Free and Easy Returns or Exchanges');
+
+            if (isFreeAndEasy) {
+              if (isPreorder) {
+                freeAndEasyPreorderVariantIds.add(item.variantId);
+              } else {
+                freeAndEasyRegularVariantIds.add(item.variantId);
+              }
+            } else {
+              const map = isPreorder ? preorderVariantQuantityMap : variantQuantityMap;
+              if (map[item.variantId]) {
+                map[item.variantId] += item.quantity;
+              } else {
+                map[item.variantId] = item.quantity;
+              }
             }
           }
-        }
-      `,
-        {
-          variables: {
-            input: {
-              lineItems,
-              customerId: foundOrder.customer.id,
-              email: foundOrder.customer.email,
-              shippingAddress: {
-                address1: shippingAddress.address1,
-                address2: shippingAddress.address2,
-                city: shippingAddress.city,
-                country: shippingAddress.country,
-                province: shippingAddress.province,
-                zip: shippingAddress.zip,
-              },
-              tags: ["combined"],
-            },
-          },
-        }
-      );
+        });
+      });
 
-      const orderCreateData = await orderCreateResponse.json();
+      const combinedLineItems = Object.keys(variantQuantityMap).map((variantId) => ({
+        variantId,
+        quantity: variantQuantityMap[variantId],
+      }));
 
-      if (orderCreateData.data.orderCreate.userErrors.length) {
-        console.error("User Errors:", orderCreateData.data.orderCreate.userErrors);
-        throw new Error(
-          orderCreateData.data.orderCreate.userErrors
-            .map((e) => e.message)
-            .join(", ")
-        );
+      const preorderLineItems = Object.keys(preorderVariantQuantityMap).map((variantId) => ({
+        variantId,
+        quantity: preorderVariantQuantityMap[variantId],
+      }));
+
+      // Include 'Free and Easy Returns or Exchanges' items with quantity 1
+      if (combinedLineItems.length > 0) {
+        freeAndEasyRegularVariantIds.forEach((variantId) => {
+          combinedLineItems.push({
+            variantId,
+            quantity: 1,
+          });
+        });
+      }
+      if (preorderLineItems.length > 0) {
+        freeAndEasyPreorderVariantIds.forEach((variantId) => {
+          preorderLineItems.push({
+            variantId,
+            quantity: 1,
+          });
+        });
       }
 
-      const newOrder = orderCreateData.data.orderCreate.order;
+      console.log("Combined Line Items:", combinedLineItems);
+      console.log("Preorder Line Items:", preorderLineItems);
 
-      for (const order of customerOrders) {
-        const orderCancelResponse = await admin.graphql(
+      let newDraftOrder, preorderDraftOrder, completedOrder, preorderCompletedOrder;
+
+      // Create a new draft order with combined items (regular items)
+      if (combinedLineItems.length > 0) {
+        const draftOrderResponse = await admin.graphql(
           `#graphql
-          mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
-            orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
-              job {
+          mutation draftOrderCreate($input: DraftOrderInput!) {
+            draftOrderCreate(input: $input) {
+              draftOrder {
                 id
-              }
-              orderCancelUserErrors {
-                field
-                message
+                invoiceUrl
+                status
+                totalPrice
+                order {
+                  id
+                  name
+                }
               }
               userErrors {
                 field
@@ -310,46 +335,206 @@ export const action = async ({ request }) => {
         `,
           {
             variables: {
-              orderId: order.id,
-              reason: "OTHER",
-              refund: false,
-              restock: true,
+              input: {
+                customerId: foundOrder.customer.id,
+                email: foundOrder.customer.email,
+                lineItems: combinedLineItems,
+                shippingAddress: normalizedOriginalAddress,
+                tags: ["combined"],
+              },
             },
           }
         );
 
-        const cancelOrderData = await orderCancelResponse.json();
+        const draftOrderData = await draftOrderResponse.json(); // Parse the JSON data
 
-        if (cancelOrderData.data.orderCancel.userErrors.length) {
-          console.error("Error canceling order:", cancelOrderData.data.orderCancel.userErrors);
+        if (draftOrderData.data.draftOrderCreate.userErrors.length) {
+          console.error("User Errors:", draftOrderData.data.draftOrderCreate.userErrors);
           throw new Error(
-            cancelOrderData.data.orderCancel.userErrors
+            draftOrderData.data.draftOrderCreate.userErrors
               .map((e) => e.message)
               .join(", ")
           );
         }
 
-        console.log(`Order ${order.orderNumber} canceled successfully.`);
+        newDraftOrder = draftOrderData.data.draftOrderCreate.draftOrder;
+
+        // Complete the draft order
+        const draftOrderCompleteResponse = await admin.graphql(
+          `#graphql
+          mutation draftOrderComplete($id: ID!) {
+            draftOrderComplete(id: $id) {
+              draftOrder {
+                id
+                order {
+                  id
+                }
+              }
+            }
+          }
+          `,
+          { variables: { id: newDraftOrder.id } }
+        );
+
+        const draftOrderCompleteData = await draftOrderCompleteResponse.json();
+
+        if (draftOrderCompleteData.errors) {
+          console.error("Error completing draft order:", draftOrderCompleteData.errors);
+          throw new Error(
+            draftOrderCompleteData.errors.map((e) => e.message).join(", ")
+          );
+        }
+
+        completedOrder = draftOrderCompleteData.data.draftOrderComplete.draftOrder.order;
       }
 
-      return json({
-        success: true,
-        message: "New combined order created, and original orders closed successfully",
-        newOrder,
-      });
+      // Create a new draft order with 'PREORDER' items if any
+      if (preorderLineItems.length > 0) {
+        const preorderDraftOrderResponse = await admin.graphql(
+          `#graphql
+          mutation draftOrderCreate($input: DraftOrderInput!) {
+            draftOrderCreate(input: $input) {
+              draftOrder {
+                id
+                invoiceUrl
+                status
+                totalPrice
+                order {
+                  id
+                  name
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+          {
+            variables: {
+              input: {
+                customerId: foundOrder.customer.id,
+                email: foundOrder.customer.email,
+                lineItems: preorderLineItems,
+                shippingAddress: normalizedOriginalAddress,
+                tags: ["combined"],
+              },
+            },
+          }
+        );
+
+        const preorderDraftOrderData = await preorderDraftOrderResponse.json();
+
+        if (preorderDraftOrderData.data.draftOrderCreate.userErrors.length) {
+          console.error("User Errors:", preorderDraftOrderData.data.draftOrderCreate.userErrors);
+          throw new Error(
+            preorderDraftOrderData.data.draftOrderCreate.userErrors
+              .map((e) => e.message)
+              .join(", ")
+          );
+        }
+
+        preorderDraftOrder = preorderDraftOrderData.data.draftOrderCreate.draftOrder;
+
+        // Complete the preorder draft order
+        const preorderDraftOrderCompleteResponse = await admin.graphql(
+          `#graphql
+          mutation draftOrderComplete($id: ID!) {
+            draftOrderComplete(id: $id) {
+              draftOrder {
+                id
+                order {
+                  id
+                }
+              }
+            }
+          }
+          `,
+          { variables: { id: preorderDraftOrder.id } }
+        );
+
+        const preorderDraftOrderCompleteData = await preorderDraftOrderCompleteResponse.json();
+
+        if (preorderDraftOrderCompleteData.errors) {
+          console.error("Error completing preorder draft order:", preorderDraftOrderCompleteData.errors);
+          throw new Error(
+            preorderDraftOrderCompleteData.errors.map((e) => e.message).join(", ")
+          );
+        }
+
+        preorderCompletedOrder = preorderDraftOrderCompleteData.data.draftOrderComplete.draftOrder.order;
+      }
+
+      if (newDraftOrder || preorderDraftOrder) {
+        // After successfully creating and completing the draft orders, cancel the original customer orders
+        for (const order of customerOrders) {
+          const orderCancelResponse = await admin.graphql(
+            `#graphql
+            mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
+              orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
+                job {
+                  id
+                }
+                orderCancelUserErrors {
+                  field
+                  message
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+            {
+              variables: {
+                orderId: order.id, // Pass the order ID as orderId
+                reason: "OTHER", // Use the reason "combining" as specified
+                refund: false, // Set refund to false
+                restock: true, // Set restock to true
+              },
+            }
+          );
+
+          const cancelOrderData = await orderCancelResponse.json();
+
+          if (cancelOrderData.data.orderCancel.userErrors.length) {
+            console.error("Error canceling order:", cancelOrderData.data.orderCancel.userErrors);
+            throw new Error(
+              cancelOrderData.data.orderCancel.userErrors
+                .map((e) => e.message)
+                .join(", ")
+            );
+          }
+
+          console.log(`Order ${order.orderNumber} canceled successfully.`);
+        }
+
+        return json({
+          success: true,
+          message: "New combined orders created, completed, and original orders closed successfully",
+          completedOrder,
+          preorderCompletedOrder,
+        });
+      } else {
+        throw new Error("No new orders were created. Cannot proceed to cancel original orders.");
+      }
     }
+
+    const unfulfilledItems = foundOrder.lineItems.edges
+      .filter((itemEdge) => itemEdge.node.fulfillmentStatus === "UNFULFILLED")
+      .map((itemEdge) => ({
+        id: itemEdge.node.id,
+        name: itemEdge.node.name,
+        quantity: itemEdge.node.quantity,
+      }));
 
     return json({
       unfulfilledOrder: {
         orderNumber: foundOrder.name,
         totalPrice: foundOrder.totalPrice,
-        unfulfilledItems: foundOrder.lineItems.edges
-          .filter((itemEdge) => itemEdge.node.fulfillmentStatus === "UNFULFILLED")
-          .map((itemEdge) => ({
-            id: itemEdge.node.id,
-            name: itemEdge.node.name,
-            quantity: itemEdge.node.quantity,
-          })),
+        unfulfilledItems,
       },
       customerOrders,
     });
