@@ -275,11 +275,7 @@ export const action = async ({ request }) => {
           variables: {
             order: {
               lineItems,
-              customer: {
-                firstName: foundOrder.customer.firstName,
-                lastName: foundOrder.customer.lastName,
-                email: foundOrder.customer.email,
-              },
+              customerId, // use customerId instead of an embedded customer object
               shippingAddress: {
                 address1: shippingAddress.address1,
                 address2: shippingAddress.address2,
