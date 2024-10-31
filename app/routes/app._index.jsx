@@ -241,7 +241,7 @@ export const action = async ({ request }) => {
 
       customerOrders.forEach(order => {
         order.lineItems.forEach(item => {
-          if (item.name.toLowerCase().startsWith('preorder')) {
+          if (item.name.toLowerCase().startsWith('PREORDER')) {
             preorderLineItems.push({
               title: item.name,
               quantity: item.quantity,
@@ -264,12 +264,12 @@ export const action = async ({ request }) => {
       if (regularLineItems.length > 0) {
         const regularOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($input: OrderInput!) {
-            orderCreate(input: $input) {
+          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+            orderCreate(order: $order, options: $options) {
               order {
                 id
                 name
-                totalPriceSet {
+                totalTaxSet {
                   shopMoney {
                     amount
                     currencyCode
@@ -295,9 +295,9 @@ export const action = async ({ request }) => {
         `,
           {
             variables: {
-              input: {
-                lineItems: regularLineItems,
-                customerId,
+              order: {
+                lineItems,
+                customerId, // use customerId instead of an embedded customer object
                 shippingAddress: {
                   address1: shippingAddress.address1,
                   address2: shippingAddress.address2,
@@ -307,6 +307,9 @@ export const action = async ({ request }) => {
                   zip: shippingAddress.zip,
                 },
                 tags: ["combined"],
+              },
+              options: {
+                // Include options if needed, or omit this if it's not required
               },
             },
           }
@@ -330,12 +333,12 @@ export const action = async ({ request }) => {
       if (preorderLineItems.length > 0) {
         const preorderOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($input: OrderInput!) {
-            orderCreate(input: $input) {
+          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+            orderCreate(order: $order, options: $options) {
               order {
                 id
                 name
-                totalPriceSet {
+                totalTaxSet {
                   shopMoney {
                     amount
                     currencyCode
@@ -361,9 +364,9 @@ export const action = async ({ request }) => {
         `,
           {
             variables: {
-              input: {
-                lineItems: preorderLineItems,
-                customerId,
+              order: {
+                lineItems,
+                customerId, // use customerId instead of an embedded customer object
                 shippingAddress: {
                   address1: shippingAddress.address1,
                   address2: shippingAddress.address2,
@@ -372,7 +375,10 @@ export const action = async ({ request }) => {
                   province: shippingAddress.province,
                   zip: shippingAddress.zip,
                 },
-                tags: ["combined", "preorder"],
+                tags: ["combined"],
+              },
+              options: {
+                // Include options if needed, or omit this if it's not required
               },
             },
           }
