@@ -77,7 +77,7 @@ export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const orderNumber = formData.get("orderNumber");
-  const combineOrders = formData.get("combineOrders") === "true"; // Convert to boolean
+  const combineOrders = formData.get("combineOrders") === "true";
 
   const selectedOrders = JSON.parse(formData.get("selectedOrders") || "[]");
 
@@ -236,8 +236,9 @@ export const action = async ({ request }) => {
 
       const lineItems = customerOrders.flatMap(order =>
         order.lineItems.map(item => ({
-          variantId: item.variantId,
+          title: item.name, // Required field for each line item
           quantity: item.quantity,
+          variantId: item.variantId,
         }))
       );
 
@@ -260,8 +261,11 @@ export const action = async ({ request }) => {
           variables: {
             input: {
               lineItems,
-              customerId: foundOrder.customer.id,
-              email: foundOrder.customer.email,
+              customer: {
+                firstName: foundOrder.customer.firstName,
+                lastName: foundOrder.customer.lastName,
+                email: foundOrder.customer.email,
+              },
               shippingAddress: {
                 address1: shippingAddress.address1,
                 address2: shippingAddress.address2,
