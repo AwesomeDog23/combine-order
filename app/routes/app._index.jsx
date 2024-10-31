@@ -305,6 +305,9 @@ export const action = async ({ request }) => {
       console.log("Combined Line Items:", combinedLineItems);
       console.log("Preorder Line Items:", preorderLineItems);
 
+      let newRegularOrder = null; // Initialize as null
+      let newPreorderOrder = null; // Initialize as null
+
       // Create new regular order if there are regular line items
       if (combinedLineItems.length > 0) {
         const lineItems = combinedLineItems.map(item => ({
