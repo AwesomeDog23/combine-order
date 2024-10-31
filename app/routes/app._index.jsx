@@ -186,9 +186,6 @@ export const action = async ({ request }) => {
                     quantity
                     variant {
                       id
-                      product {
-                        tags
-                      }
                     }
                   }
                 }
@@ -220,7 +217,6 @@ export const action = async ({ request }) => {
         name: itemEdge.node.name,
         quantity: itemEdge.node.quantity,
         variantId: itemEdge.node.variant?.id,
-        productTags: itemEdge.node.variant?.product?.tags || [],
       })),
       shippingAddress: normalizeAddress(edge.node.shippingAddress, customerInfo),
     }));
@@ -245,7 +241,7 @@ export const action = async ({ request }) => {
 
       customerOrders.forEach(order => {
         order.lineItems.forEach(item => {
-          if (item.productTags.includes('preorder')) {
+          if (item.name.toLowerCase().startsWith('preorder')) {
             preorderLineItems.push({
               title: item.name,
               quantity: item.quantity,
@@ -268,8 +264,8 @@ export const action = async ({ request }) => {
       if (regularLineItems.length > 0) {
         const regularOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-            orderCreate(order: $order, options: $options) {
+          mutation OrderCreate($input: OrderInput!) {
+            orderCreate(input: $input) {
               order {
                 id
                 name
@@ -299,7 +295,7 @@ export const action = async ({ request }) => {
         `,
           {
             variables: {
-              order: {
+              input: {
                 lineItems: regularLineItems,
                 customerId,
                 shippingAddress: {
@@ -334,8 +330,8 @@ export const action = async ({ request }) => {
       if (preorderLineItems.length > 0) {
         const preorderOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-            orderCreate(order: $order, options: $options) {
+          mutation OrderCreate($input: OrderInput!) {
+            orderCreate(input: $input) {
               order {
                 id
                 name
@@ -365,7 +361,7 @@ export const action = async ({ request }) => {
         `,
           {
             variables: {
-              order: {
+              input: {
                 lineItems: preorderLineItems,
                 customerId,
                 shippingAddress: {
