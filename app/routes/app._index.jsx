@@ -78,7 +78,6 @@ export const action = async ({ request }) => {
   const formData = await request.formData();
   const orderNumber = formData.get("orderNumber");
   const combineOrders = formData.get("combineOrders") === "true";
-
   const selectedOrders = JSON.parse(formData.get("selectedOrders") || "[]");
 
   const normalizeAddress = (address, customer) => {
@@ -165,7 +164,6 @@ export const action = async ({ request }) => {
     const customerInfo = { firstName: foundOrder.customer.firstName, lastName: foundOrder.customer.lastName };
 
     const normalizedOriginalAddress = normalizeAddress(shippingAddress, customerInfo);
-
     const numericCustomerId = customerId.split("/").pop();
 
     const customerOrdersResponse = await admin.graphql(
@@ -236,7 +234,7 @@ export const action = async ({ request }) => {
 
       const lineItems = customerOrders.flatMap(order =>
         order.lineItems.map(item => ({
-          title: item.name, // Required field for each line item
+          title: item.name,
           quantity: item.quantity,
           variantId: item.variantId,
         }))
@@ -244,11 +242,27 @@ export const action = async ({ request }) => {
 
       const orderCreateResponse = await admin.graphql(
         `#graphql
-        mutation orderCreate($input: OrderInput!) {
-          orderCreate(input: $input) {
+        mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+          orderCreate(order: $order, options: $options) {
             order {
               id
               name
+              totalTaxSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              lineItems(first: 5) {
+                nodes {
+                  variant {
+                    id
+                  }
+                  id
+                  title
+                  quantity
+                }
+              }
             }
             userErrors {
               field
@@ -259,7 +273,7 @@ export const action = async ({ request }) => {
       `,
         {
           variables: {
-            input: {
+            order: {
               lineItems,
               customer: {
                 firstName: foundOrder.customer.firstName,
@@ -275,6 +289,9 @@ export const action = async ({ request }) => {
                 zip: shippingAddress.zip,
               },
               tags: ["combined"],
+            },
+            options: {
+              // Include options if needed, or omit this if it's not required
             },
           },
         }
@@ -300,10 +317,6 @@ export const action = async ({ request }) => {
             orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
               job {
                 id
-              }
-              orderCancelUserErrors {
-                field
-                message
               }
               userErrors {
                 field
