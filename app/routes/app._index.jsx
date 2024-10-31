@@ -262,10 +262,15 @@ export const action = async ({ request }) => {
 
       // Create new regular order if there are regular line items
       if (regularLineItems.length > 0) {
+        const lineItems = regularLineItems.map(item => ({
+          variantId: item.variantId,
+          quantity: item.quantity,
+        }));
+
         const regularOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-            orderCreate(order: $order, options: $options) {
+          mutation OrderCreate($order: OrderCreateOrderInput!) {
+            orderCreate(order: $order) {
               order {
                 id
                 name
@@ -297,7 +302,7 @@ export const action = async ({ request }) => {
             variables: {
               order: {
                 lineItems,
-                customerId, // use customerId instead of an embedded customer object
+                customerId,
                 shippingAddress: {
                   address1: shippingAddress.address1,
                   address2: shippingAddress.address2,
@@ -308,9 +313,6 @@ export const action = async ({ request }) => {
                 },
                 tags: ["combined"],
               },
-              options: {
-                // Include options if needed, or omit this if it's not required
-              },
             },
           }
         );
@@ -318,7 +320,6 @@ export const action = async ({ request }) => {
         const regularOrderCreateData = await regularOrderCreateResponse.json();
 
         if (regularOrderCreateData.data.orderCreate.userErrors.length) {
-          console.error("User Errors:", regularOrderCreateData.data.orderCreate.userErrors);
           throw new Error(
             regularOrderCreateData.data.orderCreate.userErrors
               .map((e) => e.message)
@@ -331,10 +332,15 @@ export const action = async ({ request }) => {
 
       // Create new preorder order if there are preorder line items
       if (preorderLineItems.length > 0) {
+        const lineItems = preorderLineItems.map(item => ({
+          variantId: item.variantId,
+          quantity: item.quantity,
+        }));
+
         const preorderOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-            orderCreate(order: $order, options: $options) {
+          mutation OrderCreate($order: OrderCreateOrderInput!) {
+            orderCreate(order: $order) {
               order {
                 id
                 name
@@ -366,7 +372,7 @@ export const action = async ({ request }) => {
             variables: {
               order: {
                 lineItems,
-                customerId, // use customerId instead of an embedded customer object
+                customerId,
                 shippingAddress: {
                   address1: shippingAddress.address1,
                   address2: shippingAddress.address2,
@@ -377,9 +383,6 @@ export const action = async ({ request }) => {
                 },
                 tags: ["combined"],
               },
-              options: {
-                // Include options if needed, or omit this if it's not required
-              },
             },
           }
         );
@@ -387,7 +390,6 @@ export const action = async ({ request }) => {
         const preorderOrderCreateData = await preorderOrderCreateResponse.json();
 
         if (preorderOrderCreateData.data.orderCreate.userErrors.length) {
-          console.error("User Errors:", preorderOrderCreateData.data.orderCreate.userErrors);
           throw new Error(
             preorderOrderCreateData.data.orderCreate.userErrors
               .map((e) => e.message)
@@ -403,7 +405,7 @@ export const action = async ({ request }) => {
         const orderCancelResponse = await admin.graphql(
           `#graphql
           mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
-            orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
+            orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: true) {
               job {
                 id
               }
@@ -427,15 +429,12 @@ export const action = async ({ request }) => {
         const cancelOrderData = await orderCancelResponse.json();
 
         if (cancelOrderData.data.orderCancel.userErrors.length) {
-          console.error("Error canceling order:", cancelOrderData.data.orderCancel.userErrors);
           throw new Error(
             cancelOrderData.data.orderCancel.userErrors
               .map((e) => e.message)
               .join(", ")
           );
         }
-
-        console.log(`Order ${order.orderNumber} canceled successfully.`);
       }
 
       return json({
@@ -461,12 +460,7 @@ export const action = async ({ request }) => {
       customerOrders,
     });
   } catch (error) {
-    console.error("Error fetching order or creating new order:", error);
-    if (error instanceof Error) {
-      return json({ error: error.message });
-    } else {
-      return json({ error: "There was an error processing the request." });
-    }
+    return json({ error: error instanceof Error ? error.message : "There was an error processing the request." });
   }
 };
 
