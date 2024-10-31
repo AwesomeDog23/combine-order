@@ -109,6 +109,7 @@ export const action = async ({ request }) => {
   };
 
   try {
+    // Fetch the original order
     const orderResponse = await admin.graphql(
       `#graphql
       query getOrder($query: String!) {
@@ -267,8 +268,8 @@ export const action = async ({ request }) => {
       if (regularLineItems.length > 0) {
         const regularOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($input: OrderInput!) {
-            orderCreate(input: $input) {
+          mutation OrderCreate($order: OrderInput!, $options: OrderCreateOptionsInput) {
+            orderCreate(input: $order, options: $options) {
               order {
                 id
                 name
@@ -298,7 +299,7 @@ export const action = async ({ request }) => {
         `,
           {
             variables: {
-              input: {
+              order: {
                 lineItems: regularLineItems,
                 customerId,
                 shippingAddress: {
@@ -333,8 +334,8 @@ export const action = async ({ request }) => {
       if (preorderLineItems.length > 0) {
         const preorderOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($input: OrderInput!) {
-            orderCreate(input: $input) {
+          mutation OrderCreate($order: OrderInput!, $options: OrderCreateOptionsInput) {
+            orderCreate(input: $order, options: $options) {
               order {
                 id
                 name
@@ -364,7 +365,7 @@ export const action = async ({ request }) => {
         `,
           {
             variables: {
-              input: {
+              order: {
                 lineItems: preorderLineItems,
                 customerId,
                 shippingAddress: {
