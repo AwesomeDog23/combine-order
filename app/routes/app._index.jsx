@@ -359,7 +359,7 @@ export const action = async ({ request }) => {
                   province: shippingAddress.province,
                   zip: shippingAddress.zip,
                 },
-                financialStatus: PAID,
+                financialStatus: "PAID",
                 tags: ["combined"],
               },
             },
