@@ -322,6 +322,7 @@ export const action = async ({ request }) => {
               order {
                 id
                 name
+                requiresShipping
                 totalTaxSet {
                   shopMoney {
                     amount
