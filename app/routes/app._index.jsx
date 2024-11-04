@@ -366,7 +366,10 @@ export const action = async ({ request }) => {
                   {
                     title: "Standard Shipping",
                     priceSet: {
-                      shopMoney: "0.00",
+                      shopMoney: {
+                        amount: "0.00", // The shipping cost as a string
+                        currencyCode: "USD", // The currency code
+                      },
                     },
                     code: "standard",
                     source: "Custom",
@@ -450,7 +453,10 @@ export const action = async ({ request }) => {
                   {
                     title: "Standard Shipping",
                     priceSet: {
-                      shopMoney: "0.00",
+                      shopMoney: {
+                        amount: "0.00", // The shipping cost as a string
+                        currencyCode: "USD", // The currency code
+                      },
                     },
                     code: "standard",
                     source: "Custom",
