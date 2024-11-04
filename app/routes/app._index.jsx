@@ -362,6 +362,17 @@ export const action = async ({ request }) => {
                   province: shippingAddress.province,
                   zip: shippingAddress.zip,
                 },
+                shippingLines: [
+                  {
+                    title: "Standard Shipping",
+                    price: {
+                      amount: "0", // Set the shipping cost
+                      currencyCode: "USD", // Set the currency code
+                    },
+                    code: "standard",
+                    source: "Custom",
+                  },
+                ],
                 financialStatus: "PAID",
                 tags: ["combined"],
               },
@@ -436,6 +447,17 @@ export const action = async ({ request }) => {
                   province: shippingAddress.province,
                   zip: shippingAddress.zip,
                 },
+                shippingLines: [
+                  {
+                    title: "Standard Shipping",
+                    price: {
+                      amount: "0.00", // Set the shipping cost
+                      currencyCode: "USD", // Set the currency code
+                    },
+                    code: "standard",
+                    source: "Custom",
+                  },
+                ],
                 financialStatus: "PAID",
                 tags: ["combined"],
               },
