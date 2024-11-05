@@ -389,6 +389,9 @@ export const action = async ({ request }) => {
                 financialStatus: "PAID",
                 tags: ["combined"],
               },
+              options: {
+                inventoryBehaviour: "DECREMENT_OBEYING_POLICY",
+              },
             },
           }
         );
@@ -417,7 +420,7 @@ export const action = async ({ request }) => {
         const preorderOrderCreateResponse = await admin.graphql(
           `#graphql
           mutation OrderCreate($order: OrderCreateOrderInput!) {
-            orderCreate(order: $order) {
+            orderCreate(order: $order, options: $options) {
               order {
                 id
                 name
@@ -486,6 +489,9 @@ export const action = async ({ request }) => {
                 ],
                 financialStatus: "PAID",
                 tags: ["combined"],
+              },
+              options: {
+                inventoryBehaviour: "DECREMENT_OBEYING_POLICY",
               },
             },
           }
