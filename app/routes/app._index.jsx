@@ -313,6 +313,7 @@ export const action = async ({ request }) => {
         const lineItems = combinedLineItems.map(item => ({
           variantId: item.variantId,
           quantity: item.quantity,
+          requiresShipping: true,
         }));
 
         const regularOrderCreateResponse = await admin.graphql(
@@ -337,7 +338,6 @@ export const action = async ({ request }) => {
                     id
                     title
                     quantity
-                    requiresShipping
                   }
                 }
               }
@@ -411,6 +411,7 @@ export const action = async ({ request }) => {
         const lineItems = preorderLineItems.map(item => ({
           variantId: item.variantId,
           quantity: item.quantity,
+          requiresShipping: true,
         }));
 
         const preorderOrderCreateResponse = await admin.graphql(
