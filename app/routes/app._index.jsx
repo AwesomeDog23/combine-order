@@ -264,12 +264,12 @@ export const action = async ({ request }) => {
               if (isPreorder) {
                 freeAndEasyPreorderVariantIds.add(item.variantId);
                 if (!preorderOrderNumber) {
-                  preorderOrderNumber = order.orderNumber;
+                  preorderOrderNumber = order.orderNumber + "-C";
                 }
               } else {
                 freeAndEasyRegularVariantIds.add(item.variantId);
                 if (!regularOrderNumber) {
-                  regularOrderNumber = order.orderNumber;
+                  regularOrderNumber = order.orderNumber + "-C";
                 }
               }
             } else {
@@ -280,9 +280,9 @@ export const action = async ({ request }) => {
                 map[item.variantId] = item.quantity;
               }
               if (isPreorder && !preorderOrderNumber) {
-                preorderOrderNumber = order.orderNumber;
+                preorderOrderNumber = order.orderNumber + "-C";
               } else if (!isPreorder && !regularOrderNumber) {
-                regularOrderNumber = order.orderNumber;
+                regularOrderNumber = order.orderNumber + "-C";
               }
             }
           }
