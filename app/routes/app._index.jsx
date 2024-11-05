@@ -362,6 +362,16 @@ export const action = async ({ request }) => {
                   province: shippingAddress.province,
                   zip: shippingAddress.zip,
                 },
+                billingAddress: {
+                  firstName: customerInfo.firstName, // Include customer's first name
+                  lastName: customerInfo.lastName,   // Include customer's last name
+                  address1: shippingAddress.address1,
+                  address2: shippingAddress.address2,
+                  city: shippingAddress.city,
+                  country: shippingAddress.country,
+                  province: shippingAddress.province,
+                  zip: shippingAddress.zip,
+                },
                 shippingLines: [
                   {
                     title: "Standard Shipping",
@@ -440,6 +450,16 @@ export const action = async ({ request }) => {
                 lineItems,
                 customerId,
                 shippingAddress: {
+                  firstName: customerInfo.firstName, // Include customer's first name
+                  lastName: customerInfo.lastName,   // Include customer's last name
+                  address1: shippingAddress.address1,
+                  address2: shippingAddress.address2,
+                  city: shippingAddress.city,
+                  country: shippingAddress.country,
+                  province: shippingAddress.province,
+                  zip: shippingAddress.zip,
+                },
+                billingAddress: {
                   firstName: customerInfo.firstName, // Include customer's first name
                   lastName: customerInfo.lastName,   // Include customer's last name
                   address1: shippingAddress.address1,
