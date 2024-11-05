@@ -250,6 +250,10 @@ export const action = async ({ request }) => {
       const freeAndEasyRegularVariantIds = new Set(); // For "Free and Easy Returns or Exchanges" items in regular items
       const freeAndEasyPreorderVariantIds = new Set(); // For "Free and Easy Returns or Exchanges" items in preorder items
 
+      // Variables to store the first order numbers
+      let regularOrderNumber = null;
+      let preorderOrderNumber = null;
+
       customerOrders.forEach((order) => {
         order.lineItems.forEach((item) => {
           if (item.variantId) {
@@ -259,8 +263,14 @@ export const action = async ({ request }) => {
             if (isFreeAndEasy) {
               if (isPreorder) {
                 freeAndEasyPreorderVariantIds.add(item.variantId);
+                if (!preorderOrderNumber) {
+                  preorderOrderNumber = order.orderNumber;
+                }
               } else {
                 freeAndEasyRegularVariantIds.add(item.variantId);
+                if (!regularOrderNumber) {
+                  regularOrderNumber = order.orderNumber;
+                }
               }
             } else {
               const map = isPreorder ? preorderVariantQuantityMap : variantQuantityMap;
@@ -268,6 +278,11 @@ export const action = async ({ request }) => {
                 map[item.variantId] += item.quantity;
               } else {
                 map[item.variantId] = item.quantity;
+              }
+              if (isPreorder && !preorderOrderNumber) {
+                preorderOrderNumber = order.orderNumber;
+              } else if (!isPreorder && !regularOrderNumber) {
+                regularOrderNumber = order.orderNumber;
               }
             }
           }
@@ -318,8 +333,8 @@ export const action = async ({ request }) => {
 
         const regularOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-            orderCreate(order: $order, options: $options) {
+          mutation OrderCreate($order: OrderCreateInput!, $options: OrderCreateOptionsInput) {
+            orderCreate(input: $order, options: $options) {
               order {
                 id
                 name
@@ -351,6 +366,7 @@ export const action = async ({ request }) => {
           {
             variables: {
               order: {
+                name: regularOrderNumber, // Set the name to the first original order's order number
                 lineItems,
                 customerId,
                 shippingAddress: {
@@ -376,12 +392,7 @@ export const action = async ({ request }) => {
                 shippingLines: [
                   {
                     title: "Standard Shipping",
-                    priceSet: {
-                      shopMoney: {
-                        amount: "0.00", // The shipping cost as a string
-                        currencyCode: "USD", // The currency code
-                      },
-                    },
+                    price: "0.00",
                     code: "standard",
                     source: "Custom",
                   },
@@ -390,7 +401,7 @@ export const action = async ({ request }) => {
                 tags: ["combined"],
               },
               options: {
-                inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
+                inventoryBehavior: "DECREMENT_IGNORING_POLICY",
               },
             },
           }
@@ -419,8 +430,8 @@ export const action = async ({ request }) => {
 
         const preorderOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-            orderCreate(order: $order, options: $options) {
+          mutation OrderCreate($order: OrderCreateInput!, $options: OrderCreateOptionsInput) {
+            orderCreate(input: $order, options: $options) {
               order {
                 id
                 name
@@ -452,6 +463,7 @@ export const action = async ({ request }) => {
           {
             variables: {
               order: {
+                name: preorderOrderNumber, // Set the name to the second original order's order number
                 lineItems,
                 customerId,
                 shippingAddress: {
@@ -477,12 +489,7 @@ export const action = async ({ request }) => {
                 shippingLines: [
                   {
                     title: "Standard Shipping",
-                    priceSet: {
-                      shopMoney: {
-                        amount: "0.00", // The shipping cost as a string
-                        currencyCode: "USD", // The currency code
-                      },
-                    },
+                    price: "0.00",
                     code: "standard",
                     source: "Custom",
                   },
@@ -491,7 +498,7 @@ export const action = async ({ request }) => {
                 tags: ["combined"],
               },
               options: {
-                inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
+                inventoryBehavior: "DECREMENT_IGNORING_POLICY",
               },
             },
           }
