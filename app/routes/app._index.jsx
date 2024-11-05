@@ -337,6 +337,7 @@ export const action = async ({ request }) => {
                     id
                     title
                     quantity
+                    requiresShipping
                   }
                 }
               }
