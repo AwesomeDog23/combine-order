@@ -318,108 +318,7 @@ export const action = async ({ request }) => {
 
         const regularOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($order: OrderCreateOrderInput!) {
-            orderCreate(order: $order) {
-              order {
-                id
-                name
-                requiresShipping
-                totalTaxSet {
-                  shopMoney {
-                    amount
-                    currencyCode
-                  }
-                }
-                lineItems(first: 5) {
-                  nodes {
-                    variant {
-                      id
-                    }
-                    id
-                    title
-                    quantity
-                  }
-                }
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-          {
-            variables: {
-              order: {
-                lineItems,
-                customerId,
-                shippingAddress: {
-                  firstName: customerInfo.firstName, // Include customer's first name
-                  lastName: customerInfo.lastName,   // Include customer's last name
-                  address1: shippingAddress.address1,
-                  address2: shippingAddress.address2,
-                  city: shippingAddress.city,
-                  country: shippingAddress.country,
-                  province: shippingAddress.province,
-                  zip: shippingAddress.zip,
-                },
-                billingAddress: {
-                  firstName: customerInfo.firstName, // Include customer's first name
-                  lastName: customerInfo.lastName,   // Include customer's last name
-                  address1: shippingAddress.address1,
-                  address2: shippingAddress.address2,
-                  city: shippingAddress.city,
-                  country: shippingAddress.country,
-                  province: shippingAddress.province,
-                  zip: shippingAddress.zip,
-                },
-                shippingLines: [
-                  {
-                    title: "Standard Shipping",
-                    priceSet: {
-                      shopMoney: {
-                        amount: "0.00", // The shipping cost as a string
-                        currencyCode: "USD", // The currency code
-                      },
-                    },
-                    code: "standard",
-                    source: "Custom",
-                  },
-                ],
-                financialStatus: "PAID",
-                tags: ["combined"],
-              },
-              options: {
-                inventoryBehaviour: "DECREMENT_OBEYING_POLICY",
-              },
-            },
-          }
-        );
-
-        const regularOrderCreateData = await regularOrderCreateResponse.json();
-
-        if (regularOrderCreateData.data.orderCreate.userErrors.length) {
-          throw new Error(
-            regularOrderCreateData.data.orderCreate.userErrors
-              .map((e) => e.message)
-              .join(", ")
-          );
-        }
-
-        newRegularOrder = regularOrderCreateData.data.orderCreate.order;
-      }
-
-      // Create new preorder order if there are preorder line items
-      if (preorderLineItems.length > 0) {
-        const lineItems = preorderLineItems.map(item => ({
-          variantId: item.variantId,
-          quantity: item.quantity,
-          requiresShipping: true,
-        }));
-
-        const preorderOrderCreateResponse = await admin.graphql(
-          `#graphql
-          mutation OrderCreate($order: OrderCreateOrderInput!) {
+          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
             orderCreate(order: $order, options: $options) {
               order {
                 id
@@ -491,7 +390,108 @@ export const action = async ({ request }) => {
                 tags: ["combined"],
               },
               options: {
-                inventoryBehaviour: "DECREMENT_OBEYING_POLICY",
+                inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
+              },
+            },
+          }
+        );
+
+        const regularOrderCreateData = await regularOrderCreateResponse.json();
+
+        if (regularOrderCreateData.data.orderCreate.userErrors.length) {
+          throw new Error(
+            regularOrderCreateData.data.orderCreate.userErrors
+              .map((e) => e.message)
+              .join(", ")
+          );
+        }
+
+        newRegularOrder = regularOrderCreateData.data.orderCreate.order;
+      }
+
+      // Create new preorder order if there are preorder line items
+      if (preorderLineItems.length > 0) {
+        const lineItems = preorderLineItems.map(item => ({
+          variantId: item.variantId,
+          quantity: item.quantity,
+          requiresShipping: true,
+        }));
+
+        const preorderOrderCreateResponse = await admin.graphql(
+          `#graphql
+          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+            orderCreate(order: $order, options: $options) {
+              order {
+                id
+                name
+                requiresShipping
+                totalTaxSet {
+                  shopMoney {
+                    amount
+                    currencyCode
+                  }
+                }
+                lineItems(first: 5) {
+                  nodes {
+                    variant {
+                      id
+                    }
+                    id
+                    title
+                    quantity
+                  }
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+          {
+            variables: {
+              order: {
+                lineItems,
+                customerId,
+                shippingAddress: {
+                  firstName: customerInfo.firstName, // Include customer's first name
+                  lastName: customerInfo.lastName,   // Include customer's last name
+                  address1: shippingAddress.address1,
+                  address2: shippingAddress.address2,
+                  city: shippingAddress.city,
+                  country: shippingAddress.country,
+                  province: shippingAddress.province,
+                  zip: shippingAddress.zip,
+                },
+                billingAddress: {
+                  firstName: customerInfo.firstName, // Include customer's first name
+                  lastName: customerInfo.lastName,   // Include customer's last name
+                  address1: shippingAddress.address1,
+                  address2: shippingAddress.address2,
+                  city: shippingAddress.city,
+                  country: shippingAddress.country,
+                  province: shippingAddress.province,
+                  zip: shippingAddress.zip,
+                },
+                shippingLines: [
+                  {
+                    title: "Standard Shipping",
+                    priceSet: {
+                      shopMoney: {
+                        amount: "0.00", // The shipping cost as a string
+                        currencyCode: "USD", // The currency code
+                      },
+                    },
+                    code: "standard",
+                    source: "Custom",
+                  },
+                ],
+                financialStatus: "PAID",
+                tags: ["combined"],
+              },
+              options: {
+                inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
               },
             },
           }
