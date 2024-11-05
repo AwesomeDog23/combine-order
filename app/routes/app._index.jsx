@@ -333,7 +333,7 @@ export const action = async ({ request }) => {
 
         const regularOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($order: OrderCreateInput!, $options: OrderCreateOptionsInput) {
+          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
             orderCreate(input: $order, options: $options) {
               order {
                 id
@@ -430,7 +430,7 @@ export const action = async ({ request }) => {
 
         const preorderOrderCreateResponse = await admin.graphql(
           `#graphql
-          mutation OrderCreate($order: OrderCreateInput!, $options: OrderCreateOptionsInput) {
+          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
             orderCreate(input: $order, options: $options) {
               order {
                 id
