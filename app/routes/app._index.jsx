@@ -389,11 +389,24 @@ export const action = async ({ request }) => {
                   province: shippingAddress.province,
                   zip: shippingAddress.zip,
                 },
+                shippingLines: [
+                  {
+                    title: "Standard Shipping",
+                    priceSet: {
+                      shopMoney: {
+                        amount: "0.00", // The shipping cost as a string
+                        currencyCode: "USD", // The currency code
+                      },
+                    },
+                    code: "standard",
+                    source: "Custom",
+                  },
+                ],
                 financialStatus: "PAID",
                 tags: ["combined"],
               },
               options: {
-                inventoryBehavior: "DECREMENT_IGNORING_POLICY",
+                inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
               },
             },
           }
@@ -478,11 +491,24 @@ export const action = async ({ request }) => {
                   province: shippingAddress.province,
                   zip: shippingAddress.zip,
                 },
+                shippingLines: [
+                  {
+                    title: "Standard Shipping",
+                    priceSet: {
+                      shopMoney: {
+                        amount: "0.00", // The shipping cost as a string
+                        currencyCode: "USD", // The currency code
+                      },
+                    },
+                    code: "standard",
+                    source: "Custom",
+                  },
+                ],
                 financialStatus: "PAID",
                 tags: ["combined"],
               },
               options: {
-                inventoryBehavior: "DECREMENT_IGNORING_POLICY",
+                inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
               },
             },
           }
