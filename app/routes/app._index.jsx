@@ -409,7 +409,7 @@ export const action = async ({ request }) => {
                   },
                 ],
                 financialStatus: "PAID",
-                tags: ["combined"],
+                tags: [`Combined at: ${new Date().toLocaleString()}`],
               },
               options: {
                 inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
@@ -517,7 +517,7 @@ export const action = async ({ request }) => {
                   },
                 ],
                 financialStatus: "PAID",
-                tags: ["combined"],
+                tags: [`Combined at: ${new Date().toLocaleString()}`],
               },
               options: {
                 inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
