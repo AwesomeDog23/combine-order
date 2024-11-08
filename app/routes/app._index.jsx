@@ -561,6 +561,7 @@ export const action = async ({ request }) => {
               reason: "OTHER",
               refund: false,
               restock: true,
+              staffnote: 'Order combined with other orders',
             },
           }
         );
