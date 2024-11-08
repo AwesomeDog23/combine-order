@@ -437,6 +437,12 @@ export const action = async ({ request }) => {
           variantId: item.variantId,
           quantity: item.quantity,
           requiresShipping: true,
+          priceSet: {
+            shopMoney: {
+              amount: "0.00",
+              currencyCode: "USD",
+            }
+          },
         }));
 
         const preorderOrderCreateResponse = await admin.graphql(
