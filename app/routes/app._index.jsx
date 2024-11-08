@@ -409,7 +409,7 @@ export const action = async ({ request }) => {
                   },
                 ],
                 financialStatus: "PAID",
-                tags: [`Combined at: ${new Date().toLocaleString()}`],
+                tags: [`Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`],
               },
               options: {
                 inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
@@ -517,7 +517,7 @@ export const action = async ({ request }) => {
                   },
                 ],
                 financialStatus: "PAID",
-                tags: [`Combined at: ${new Date().toLocaleString()}`],
+                tags: [`Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`],
               },
               options: {
                 inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
