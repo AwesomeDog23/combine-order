@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { json } from "@remix-run/node";
 import { useFetcher } from "@remix-run/react";
 import {
@@ -120,6 +120,13 @@ export default function OrderLookupPage() {
     }
   };
 
+  // Automatically complete order once all SKUs are entered
+  useEffect(() => {
+    if (allSkusEntered) {
+      handleCompleteOrder();
+    }
+  }, [enteredSkus]);
+
   return (
     <Page>
       <TitleBar title="Order Lookup" />
@@ -180,13 +187,6 @@ export default function OrderLookupPage() {
                   </List.Item>
                 ))}
               </List>
-              <Button
-                primary
-                onClick={handleCompleteOrder}
-                disabled={!allSkusEntered}
-              >
-                Complete Order
-              </Button>
             </Card>
           </Layout.Section>
         )}
