@@ -1,16 +1,15 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { json } from "@remix-run/node";
 import { useFetcher } from "@remix-run/react";
 import {
   Page,
   Layout,
-  Text,
   Card,
-  Button,
-  BlockStack,
-  List,
   TextField,
+  Button,
+  List,
   Spinner,
+  Text,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -19,10 +18,8 @@ export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const orderNumber = formData.get("orderNumber");
-  const splitOrder = formData.get("splitOrder") === "true";
 
   try {
-    // Fetch the order by order number
     const orderResponse = await admin.graphql(
       `#graphql
       query getOrder($query: String!) {
@@ -38,22 +35,10 @@ export const action = async ({ request }) => {
                     name
                     quantity
                     variant {
-                      id
+                      sku
                     }
                   }
                 }
-              }
-              customer {
-                id
-                email
-              }
-              shippingAddress {
-                address1
-                address2
-                city
-                country
-                zip
-                province
               }
             }
           }
@@ -71,270 +56,24 @@ export const action = async ({ request }) => {
 
     const foundOrder = orderData.data.orders.edges[0].node;
 
-    if (!splitOrder) {
-      // Return the order data
-      return json({ order: foundOrder });
-    } else {
-      const splitQuantities = JSON.parse(formData.get("splitQuantities"));
-
-      const selectedItems = [];
-      const unselectedItems = [];
-
-      // Split the items based on the provided split quantities
-      foundOrder.lineItems.edges.forEach((itemEdge) => {
-        const item = itemEdge.node;
-        const splitQuantity = splitQuantities[item.variant.id] || 0;
-
-        if (splitQuantity > 0) {
-          // Push items with the split quantity to the first order
-          selectedItems.push({
-            ...item,
-            quantity: splitQuantity,
-          });
-        }
-
-        const remainingQuantity = item.quantity - splitQuantity;
-        if (remainingQuantity > 0) {
-          // Push remaining items to the second order
-          unselectedItems.push({
-            ...item,
-            quantity: remainingQuantity,
-          });
-        }
-      });
-
-      // If there are no unselected items, handle the error here
-      if (unselectedItems.length === 0) {
-        return json({
-          error: "There are no items left to create the second order.",
-        });
-      }
-
-      // Prepare line items for the new orders
-      const selectedLineItems = selectedItems.map((item) => ({
-        variantId: item.variant.id,
-        quantity: item.quantity,
-      }));
-
-      const unselectedLineItems = unselectedItems.map((item) => ({
-        variantId: item.variant.id,
-        quantity: item.quantity,
-      }));
-
-      const customerId = foundOrder.customer?.id;
-      const email = foundOrder.customer?.email;
-      const shippingAddress = foundOrder.shippingAddress;
-
-      // Create the first draft order with selected items
-      let newOrder1 = null;
-      if (selectedLineItems.length > 0) {
-        const draftOrderResponse1 = await admin.graphql(
-          `#graphql
-          mutation draftOrderCreate($input: DraftOrderInput!) {
-            draftOrderCreate(input: $input) {
-              draftOrder {
-                id
-                order {
-                  id
-                  name
-                }
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-          {
-            variables: {
-              input: {
-                lineItems: selectedLineItems,
-                customerId,
-                email,
-                shippingAddress,
-              },
-            },
-          }
-        );
-
-        const draftOrderData1 = await draftOrderResponse1.json();
-        if (draftOrderData1.data.draftOrderCreate.userErrors.length) {
-          return json({
-            error: draftOrderData1.data.draftOrderCreate.userErrors
-              .map((e) => e.message)
-              .join(", "),
-          });
-        }
-
-        // Complete the draft order
-        const draftOrderId1 = draftOrderData1.data.draftOrderCreate.draftOrder.id;
-        const completeResponse1 = await admin.graphql(
-          `#graphql
-          mutation draftOrderComplete($id: ID!) {
-            draftOrderComplete(id: $id) {
-              draftOrder {
-                order {
-                  id
-                  name
-                }
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-          { variables: { id: draftOrderId1 } }
-        );
-
-        const completeData1 = await completeResponse1.json();
-        if (completeData1.data.draftOrderComplete.userErrors.length) {
-          return json({
-            error: completeData1.data.draftOrderComplete.userErrors
-              .map((e) => e.message)
-              .join(", "),
-          });
-        }
-
-        newOrder1 = completeData1.data.draftOrderComplete.draftOrder.order;
-      }
-
-      // Ensure unselected items always result in a second order
-      let newOrder2 = null;
-      if (unselectedLineItems.length > 0) {
-        const draftOrderResponse2 = await admin.graphql(
-          `#graphql
-          mutation draftOrderCreate($input: DraftOrderInput!) {
-            draftOrderCreate(input: $input) {
-              draftOrder {
-                id
-                order {
-                  id
-                  name
-                }
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-          {
-            variables: {
-              input: {
-                lineItems: unselectedLineItems,
-                customerId,
-                email,
-                shippingAddress,
-              },
-            },
-          }
-        );
-
-        const draftOrderData2 = await draftOrderResponse2.json();
-        if (draftOrderData2.data.draftOrderCreate.userErrors.length) {
-          return json({
-            error: draftOrderData2.data.draftOrderCreate.userErrors
-              .map((e) => e.message)
-              .join(", "),
-          });
-        }
-
-        // Complete the second draft order
-        const draftOrderId2 = draftOrderData2.data.draftOrderCreate.draftOrder.id;
-        const completeResponse2 = await admin.graphql(
-          `#graphql
-          mutation draftOrderComplete($id: ID!) {
-            draftOrderComplete(id: $id) {
-              draftOrder {
-                order {
-                  id
-                  name
-                }
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-          { variables: { id: draftOrderId2 } }
-        );
-
-        const completeData2 = await completeResponse2.json();
-        if (completeData2.data.draftOrderComplete.userErrors.length) {
-          return json({
-            error: completeData2.data.draftOrderComplete.userErrors
-              .map((e) => e.message)
-              .join(", "),
-          });
-        }
-
-        newOrder2 = completeData2.data.draftOrderComplete.draftOrder.order;
-      }
-
-      // Cancel the original order only if both orders are created
-      const cancelOrderResponse = await admin.graphql(
-        `#graphql
-        mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
-          orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
-            job {
-              id
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-        `,
-        {
-          variables: {
-            orderId: foundOrder.id,
-            reason: "OTHER",
-            refund: false,
-            restock: true,
-          },
-        }
-      );
-
-      const cancelOrderData = await cancelOrderResponse.json();
-      if (cancelOrderData.data.orderCancel.userErrors.length) {
-        return json({
-          error: cancelOrderData.data.orderCancel.userErrors
-            .map((e) => e.message)
-            .join(", "),
-        });
-      }
-
-      return json({
-        success: true,
-        message: "Order split successfully",
-        newOrder1,
-        newOrder2,
-      });
-    }
+    return json({ order: foundOrder });
   } catch (error) {
     return json({ error: error.message });
   }
 };
 
-export default function SplitOrderPage() {
+export default function OrderLookupPage() {
   const fetcher = useFetcher();
-  const shopify = useAppBridge();
+  const appBridge = useAppBridge();
   const [orderNumber, setOrderNumber] = useState("");
-  const [splitQuantities, setSplitQuantities] = useState({});
+  const [enteredSkus, setEnteredSkus] = useState([]);
+  const [currentSku, setCurrentSku] = useState("");
 
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
     fetcher.formMethod === "POST";
 
   const error = fetcher.data?.error;
-
   const order = fetcher.data?.order;
 
   const handleInputChange = (value) => {
@@ -343,39 +82,49 @@ export default function SplitOrderPage() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    fetcher.submit({ orderNumber }, { method: "POST" });
+    fetcher.submit({ orderNumber }, { method: "post" });
   };
 
-  const handleQuantityChange = (variantId) => (value) => {
-    setSplitQuantities((prev) => ({
-      ...prev,
-      [variantId]: parseInt(value, 10) || 0,
-    }));
-  };
+  const handleSkuEntry = (event) => {
+    event.preventDefault();
+    if (!currentSku || !order) return;
 
-  const handleSplitOrder = () => {
-    // Prepare the split quantities to send to the server
-    fetcher.submit(
-      {
-        orderNumber,
-        splitOrder: "true",
-        splitQuantities: JSON.stringify(splitQuantities),
-      },
-      { method: "POST" }
+    const itemToUpdate = order.lineItems.edges.find(
+      ({ node }) =>
+        node.variant.sku === currentSku &&
+        enteredSkus.filter((sku) => sku === currentSku).length < node.quantity
     );
+
+    if (itemToUpdate) {
+      setEnteredSkus((prev) => [...prev, currentSku]);
+      setCurrentSku("");
+    }
   };
 
-  useEffect(() => {
-    if (error) {
-      shopify.toast.show(error);
-    } else if (fetcher.data && fetcher.data.success) {
-      shopify.toast.show(fetcher.data.message);
-    }
-  }, [fetcher.data, error, shopify]);
+  const allSkusEntered = order
+    ? order.lineItems.edges.every(
+        ({ node }) =>
+          enteredSkus.filter((sku) => sku === node.variant.sku).length === node.quantity
+      )
+    : false;
+
+    const handleCompleteOrder = () => {
+      if (allSkusEntered && order) {
+        // Extract the numeric ID from the global ID
+        const globalId = order.id;
+        const numericId = globalId.split('/').pop();
+    
+        // Construct the URL for the order page
+        const orderUrl = `https://your-store.myshopify.com/admin/orders/${numericId}`;
+    
+        // Open the order page in a new tab
+        window.open(orderUrl, "_blank");
+      }
+    };
 
   return (
     <Page>
-      <TitleBar title="Split Order" />
+      <TitleBar title="Order Lookup" />
 
       <Layout>
         <Layout.Section>
@@ -387,74 +136,60 @@ export default function SplitOrderPage() {
                 onChange={handleInputChange}
                 placeholder="Enter Order Number"
               />
-              <Button primary submit>
-                Search Order
+              <Button primary submit disabled={isLoading}>
+                {isLoading ? <Spinner size="small" /> : "Search Order"}
               </Button>
             </form>
           </Card>
         </Layout.Section>
-      </Layout>
 
-      {isLoading && <Spinner accessibilityLabel="Loading order" size="large" />}
+        {error && (
+          <Layout.Section>
+            <Text color="critical">{error}</Text>
+          </Layout.Section>
+        )}
 
-      {!isLoading && error && <Text color="critical">{error}</Text>}
-
-      {!isLoading && order && (
-        <BlockStack gap="500">
-          <Card title={`Order #${order.name}`}>
-            <List>
-              {order.lineItems.edges.map((itemEdge) => {
-                const item = itemEdge.node;
-                return (
-                  <List.Item key={item.id}>
-                    <Text>{`${item.name} - Quantity: ${item.quantity}`}</Text>
-                    <TextField
-                      label="Quantity for First Order"
-                      value={splitQuantities[item.variant.id] || ""}
-                      onChange={handleQuantityChange(item.variant.id)}
-                      placeholder="Enter quantity"
-                      type="number"
-                      min={0}
-                      max={item.quantity}
-                    />
+        {order && (
+          <Layout.Section>
+            <Card title={`Order #${order.name}`} sectioned>
+              <form onSubmit={handleSkuEntry}>
+                <TextField
+                  label="Enter SKU"
+                  value={currentSku}
+                  onChange={(value) => setCurrentSku(value)}
+                  placeholder="Scan or enter SKU"
+                />
+                <Button primary submit>
+                  Enter SKU
+                </Button>
+              </form>
+              <List>
+                {order.lineItems.edges.map(({ node }) => (
+                  <List.Item key={node.id}>
+                    <Text>
+                      {node.name} - SKU: {node.variant.sku} - Quantity: {node.quantity} - Entered SKUs:{" "}
+                      {enteredSkus
+                        .filter((sku) => sku === node.variant.sku)
+                        .join(", ") || "None"}
+                    </Text>
+                    {enteredSkus.filter((sku) => sku === node.variant.sku).length >=
+                      node.quantity && (
+                      <Text color="success">Completed</Text>
+                    )}
                   </List.Item>
-                );
-              })}
-            </List>
-          </Card>
-          <Button primary onClick={handleSplitOrder}>
-            Split Order
-          </Button>
-        </BlockStack>
-      )}
-
-      {!isLoading && fetcher.data && fetcher.data.success && (
-        <BlockStack gap="500">
-          <Text>{fetcher.data.message}</Text>
-          {fetcher.data.newOrder1 && (
-            <Button
-              primary
-              onClick={() => {
-                const orderId = fetcher.data.newOrder1.id.split("/").pop();
-                window.open(`shopify:admin/orders/${orderId}`, "_blank");
-              }}
-            >
-              View New Order #{fetcher.data.newOrder1.name}
-            </Button>
-          )}
-          {fetcher.data.newOrder2 && (
-            <Button
-              primary
-              onClick={() => {
-                const orderId = fetcher.data.newOrder2.id.split("/").pop();
-                window.open(`shopify:admin/orders/${orderId}`, "_blank");
-              }}
-            >
-              View New Order #{fetcher.data.newOrder2.name}
-            </Button>
-          )}
-        </BlockStack>
-      )}
+                ))}
+              </List>
+              <Button
+                primary
+                onClick={handleCompleteOrder}
+                disabled={!allSkusEntered}
+              >
+                Complete Order
+              </Button>
+            </Card>
+          </Layout.Section>
+        )}
+      </Layout>
     </Page>
   );
 }

@@ -3,7 +3,7 @@
 client_id = "7a2b7b7c61c9c7fad050f4f68c67b55f"
 name = "combine-app-scanning"
 handle = "combine-app-scanning"
-application_url = "https://text-bc-profits-inherited.trycloudflare.com"
+application_url = "https://educational-shown-adjacent-limousines.trycloudflare.com"
 embedded = true
 
 [build]
@@ -17,9 +17,9 @@ scopes = "read_customers,read_orders,write_draft_orders,write_orders,write_produ
 
 [auth]
 redirect_urls = [
-  "https://text-bc-profits-inherited.trycloudflare.com/auth/callback",
-  "https://text-bc-profits-inherited.trycloudflare.com/auth/shopify/callback",
-  "https://text-bc-profits-inherited.trycloudflare.com/api/auth/callback"
+  "https://educational-shown-adjacent-limousines.trycloudflare.com/auth/callback",
+  "https://educational-shown-adjacent-limousines.trycloudflare.com/auth/shopify/callback",
+  "https://educational-shown-adjacent-limousines.trycloudflare.com/api/auth/callback"
 ]
 
 [webhooks]
