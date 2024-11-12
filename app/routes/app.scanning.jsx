@@ -178,7 +178,7 @@ export default function OrderLookupPage() {
                         .join(", ") || "None"}
                     </Text>
                     <Button onClick={() => addSkuToEntered(node.variant.sku)}>
-                      Add SKU
+                      Mark as packed
                     </Button>
                     {enteredSkus.filter((sku) => sku === node.variant.sku).length >=
                       node.quantity && (
