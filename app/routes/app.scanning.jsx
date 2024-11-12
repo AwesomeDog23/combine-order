@@ -114,13 +114,19 @@ export default function OrderLookupPage() {
       )
     : false;
 
-  const handleCompleteOrder = () => {
-    if (allSkusEntered && order) {
-      const globalId = order.id;
-      const numericId = globalId.split('/').pop();
-      window.open(`shopify:admin/orders/${numericId}`, "_blank");
-    }
-  };
+    const handleCompleteOrder = () => {
+      if (allSkusEntered && order) {
+        const globalId = order.id;
+        const numericId = globalId.split('/').pop();
+        window.open(`shopify:admin/orders/${numericId}`, "_blank");
+    
+        // Reset the page states
+        setOrderNumber("");
+        setEnteredSkus([]);
+        setCurrentSku("");
+        fetcher.load("/"); // reloads the page or refetches data
+      }
+    };
 
   // Automatically complete order once all SKUs are entered
   useEffect(() => {
