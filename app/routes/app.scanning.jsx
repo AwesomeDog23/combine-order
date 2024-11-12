@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { json } from "@remix-run/node";
 import { useFetcher } from "@remix-run/react";
 import {
@@ -68,6 +68,7 @@ export default function OrderLookupPage() {
   const [orderNumber, setOrderNumber] = useState("");
   const [enteredSkus, setEnteredSkus] = useState([]);
   const [currentSku, setCurrentSku] = useState("");
+  const skuInputRef = useRef(null);
 
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
@@ -75,6 +76,13 @@ export default function OrderLookupPage() {
 
   const error = fetcher.data?.error;
   const order = fetcher.data?.order;
+
+  useEffect(() => {
+    // Auto-focus SKU input after order is found
+    if (order && skuInputRef.current) {
+      skuInputRef.current.focus();
+    }
+  }, [order]);
 
   const handleInputChange = (value) => {
     setOrderNumber(value);
@@ -114,19 +122,19 @@ export default function OrderLookupPage() {
       )
     : false;
 
-    const handleCompleteOrder = () => {
-      if (allSkusEntered && order) {
-        const globalId = order.id;
-        const numericId = globalId.split('/').pop();
-        window.open(`shopify:admin/orders/${numericId}`, "_blank");
-    
-        // Reset the page states
-        setOrderNumber("");
-        setEnteredSkus([]);
-        setCurrentSku("");
-        fetcher.load("/"); // reloads the page or refetches data
-      }
-    };
+  const handleCompleteOrder = () => {
+    if (allSkusEntered && order) {
+      const globalId = order.id;
+      const numericId = globalId.split('/').pop();
+      window.open(`shopify:admin/orders/${numericId}`, "_blank");
+
+      // Reset the page states
+      setOrderNumber("");
+      setEnteredSkus([]);
+      setCurrentSku("");
+      fetcher.load("/"); // reloads the page or refetches data
+    }
+  };
 
   // Automatically complete order once all SKUs are entered
   useEffect(() => {
@@ -142,17 +150,34 @@ export default function OrderLookupPage() {
       <Layout>
         <Layout.Section>
           <Card sectioned>
-            <form onSubmit={handleSubmit}>
-              <TextField
-                label="Order Number"
-                value={orderNumber}
-                onChange={handleInputChange}
-                placeholder="Enter Order Number"
-              />
-              <Button primary submit disabled={isLoading}>
-                {isLoading ? <Spinner size="small" /> : "Search Order"}
-              </Button>
-            </form>
+            {!order ? (
+              <form onSubmit={handleSubmit}>
+                <TextField
+                  label="Order Number"
+                  value={orderNumber}
+                  onChange={handleInputChange}
+                  placeholder="Enter Order Number"
+                  autoFocus
+                />
+                <Button primary submit disabled={isLoading}>
+                  {isLoading ? <Spinner size="small" /> : "Search Order"}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleSkuEntry}>
+                <TextField
+                  label="Enter SKU"
+                  value={currentSku}
+                  onChange={(value) => setCurrentSku(value)}
+                  placeholder="Scan or enter SKU"
+                  ref={skuInputRef}
+                  autoFocus
+                />
+                <Button primary submit>
+                  Enter SKU
+                </Button>
+              </form>
+            )}
           </Card>
         </Layout.Section>
 
@@ -165,17 +190,6 @@ export default function OrderLookupPage() {
         {order && (
           <Layout.Section>
             <Card title={`Order #${order.name}`} sectioned>
-              <form onSubmit={handleSkuEntry}>
-                <TextField
-                  label="Enter SKU"
-                  value={currentSku}
-                  onChange={(value) => setCurrentSku(value)}
-                  placeholder="Scan or enter SKU"
-                />
-                <Button primary submit>
-                  Enter SKU
-                </Button>
-              </form>
               <List>
                 {order.lineItems.edges.map(({ node }) => {
                   const enteredQuantity = getEnteredQuantity(node.variant.sku);
