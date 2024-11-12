@@ -89,15 +89,19 @@ export default function OrderLookupPage() {
     event.preventDefault();
     if (!currentSku || !order) return;
 
+    addSkuToEntered(currentSku);
+    setCurrentSku("");
+  };
+
+  const addSkuToEntered = (sku) => {
     const itemToUpdate = order.lineItems.edges.find(
       ({ node }) =>
-        node.variant.sku === currentSku &&
-        enteredSkus.filter((sku) => sku === currentSku).length < node.quantity
+        node.variant.sku === sku &&
+        enteredSkus.filter((enteredSku) => enteredSku === sku).length < node.quantity
     );
 
     if (itemToUpdate) {
-      setEnteredSkus((prev) => [...prev, currentSku]);
-      setCurrentSku("");
+      setEnteredSkus((prev) => [...prev, sku]);
     }
   };
 
@@ -108,19 +112,13 @@ export default function OrderLookupPage() {
       )
     : false;
 
-    const handleCompleteOrder = () => {
-      if (allSkusEntered && order) {
-        // Extract the numeric ID from the global ID
-        const globalId = order.id;
-        const numericId = globalId.split('/').pop();
-    
-        // Construct the URL for the order page
-        const orderUrl = `https://your-store.myshopify.com/admin/orders/${numericId}`;
-    
-        // Open the order page in a new tab
-        window.open(orderUrl, "_blank");
-      }
-    };
+  const handleCompleteOrder = () => {
+    if (allSkusEntered && order) {
+      const globalId = order.id;
+      const numericId = globalId.split('/').pop();
+      window.open(`shopify:admin/orders/${numericId}`, "_blank");
+    }
+  };
 
   return (
     <Page>
@@ -172,6 +170,9 @@ export default function OrderLookupPage() {
                         .filter((sku) => sku === node.variant.sku)
                         .join(", ") || "None"}
                     </Text>
+                    <Button onClick={() => addSkuToEntered(node.variant.sku)}>
+                      Add SKU
+                    </Button>
                     {enteredSkus.filter((sku) => sku === node.variant.sku).length >=
                       node.quantity && (
                       <Text color="success">Completed</Text>
