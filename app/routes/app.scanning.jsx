@@ -105,10 +105,12 @@ export default function OrderLookupPage() {
     }
   };
 
+  const getEnteredQuantity = (sku) =>
+    enteredSkus.filter((enteredSku) => enteredSku === sku).length;
+
   const allSkusEntered = order
     ? order.lineItems.edges.every(
-        ({ node }) =>
-          enteredSkus.filter((sku) => sku === node.variant.sku).length === node.quantity
+        ({ node }) => getEnteredQuantity(node.variant.sku) === node.quantity
       )
     : false;
 
@@ -169,23 +171,29 @@ export default function OrderLookupPage() {
                 </Button>
               </form>
               <List>
-                {order.lineItems.edges.map(({ node }) => (
-                  <List.Item key={node.id}>
-                    <Text>
-                      {node.name} - SKU: {node.variant.sku} - Quantity: {node.quantity} - Entered SKUs:{" "}
-                      {enteredSkus
-                        .filter((sku) => sku === node.variant.sku)
-                        .join(", ") || "None"}
-                    </Text>
-                    <Button onClick={() => addSkuToEntered(node.variant.sku)}>
-                      Mark as packed
-                    </Button>
-                    {enteredSkus.filter((sku) => sku === node.variant.sku).length >=
-                      node.quantity && (
-                      <Text color="success">Completed</Text>
-                    )}
-                  </List.Item>
-                ))}
+                {order.lineItems.edges.map(({ node }) => {
+                  const enteredQuantity = getEnteredQuantity(node.variant.sku);
+                  const isComplete = enteredQuantity >= node.quantity;
+                  return (
+                    <List.Item
+                      key={node.id}
+                      style={{
+                        backgroundColor: isComplete ? "lightgreen" : "transparent",
+                        padding: "10px",
+                        borderRadius: "5px",
+                        marginBottom: "5px",
+                      }}
+                    >
+                      <Text>
+                        {node.name} - SKU: {node.variant.sku} - Quantity:{" "}
+                        {enteredQuantity}/{node.quantity}
+                      </Text>
+                      <Button onClick={() => addSkuToEntered(node.variant.sku)}>
+                        Mark as packed
+                      </Button>
+                    </List.Item>
+                  );
+                })}
               </List>
             </Card>
           </Layout.Section>
