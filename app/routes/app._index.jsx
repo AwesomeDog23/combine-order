@@ -626,22 +626,6 @@ export const action = async ({ request }) => {
   }
 };
 
-import { useEffect, useState } from "react";
-import { useFetcher, useLoaderData } from "@remix-run/react";
-import {
-  Page,
-  Layout,
-  Text,
-  Card,
-  Button,
-  BlockStack,
-  List,
-  TextField,
-  Spinner,
-  Checkbox,
-} from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
-
 export default function Index() {
   const data = useLoaderData();
   const fetcher = useFetcher();
