@@ -24,7 +24,7 @@ export const action = async ({ request }) => {
     // Tag the order with the timestamp as a note or metafield
     const updateOrderResponse = await admin.graphql(
       `#graphql
-      mutation addCompletionTimestamp($id: ID!, $note: String!) {
+      mutation addCompletionTimestamp($input: OrderInput!) {
         orderUpdate(input: { id: $id, tags: $tags }) {
           order {
             id
