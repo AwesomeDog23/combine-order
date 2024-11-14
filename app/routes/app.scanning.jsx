@@ -104,17 +104,17 @@ export default function OrderLookupPage() {
   const addSkuToEntered = (sku) => {
     const itemToUpdate = order.lineItems.edges.find(
       ({ node }) =>
-        node.variant.sku === sku &&
-        enteredSkus.filter((enteredSku) => enteredSku === sku).length < node.quantity
+        node.variant.sku.toLowerCase() === sku.toLowerCase() && // Make comparison case-insensitive
+        enteredSkus.filter((enteredSku) => enteredSku.toLowerCase() === sku.toLowerCase()).length < node.quantity
     );
-
+  
     if (itemToUpdate) {
       setEnteredSkus((prev) => [...prev, sku]);
     }
   };
 
   const getEnteredQuantity = (sku) =>
-    enteredSkus.filter((enteredSku) => enteredSku === sku).length;
+    enteredSkus.filter((enteredSku) => enteredSku.toLowerCase() === sku.toLowerCase()).length;
 
   const allSkusEntered = order
     ? order.lineItems.edges.every(
