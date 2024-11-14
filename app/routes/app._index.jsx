@@ -21,7 +21,31 @@ export const action = async ({ request }) => {
   const completionTimestamp = formData.get("completionTimestamp");
 
   if (completionTimestamp) {
-    // Tag the order with the timestamp as a note or metafield
+    // Fetch existing tags
+    const orderResponse = await admin.graphql(
+      `#graphql
+      query getOrderTags($id: ID!) {
+        order(id: $id) {
+          id
+          tags
+        }
+      }
+      `,
+      {
+        variables: {
+          id: orderNumber, // Ensure this is the correct global ID of the order
+        },
+      }
+    );
+
+    const orderData = await orderResponse.json();
+    const existingTags = orderData.data.order.tags;
+
+    // Append new tag
+    const newTag = `Order completed at: ${completionTimestamp}`;
+    const updatedTags = [...existingTags, newTag];
+
+    // Update order with new tags
     const updateOrderResponse = await admin.graphql(
       `#graphql
       mutation addCompletionTimestamp($id: ID!, $tags: [String!]) {
@@ -40,10 +64,16 @@ export const action = async ({ request }) => {
       {
         variables: {
           id: orderNumber, // Ensure this is the correct global ID of the order
-          tags: [`Order completed at: ${completionTimestamp}`],
+          tags: updatedTags,
         },
       }
     );
+
+    const updateData = await updateOrderResponse.json();
+
+    if (updateData.data.orderUpdate.userErrors.length > 0) {
+      return json({ success: false, errors: updateData.data.orderUpdate.userErrors });
+    }
 
     return json({ success: true });
   }
