@@ -25,7 +25,7 @@ export const action = async ({ request }) => {
     const updateOrderResponse = await admin.graphql(
       `#graphql
       mutation addCompletionTimestamp($id: ID!, $note: String!) {
-        orderUpdate(input: { id: $id, note: $note }) {
+        orderUpdate(input: { id: $id, tags: $tags }) {
           order {
             id
             note
@@ -40,7 +40,7 @@ export const action = async ({ request }) => {
       {
         variables: {
           id: orderNumber, // Assuming this is the global ID; adjust as needed
-          note: `Order completed at: ${completionTimestamp}`,
+          tags: [`Order completed at: ${completionTimestamp}`],
         },
       }
     );
