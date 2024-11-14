@@ -637,7 +637,7 @@ export default function Index() {
   const [pageCursor, setPageCursor] = useState(null);
   const [hasNextPage, setHasNextPage] = useState(data?.pageInfo?.hasNextPage);
   const [hasPreviousPage, setHasPreviousPage] = useState(data?.pageInfo?.hasPreviousPage);
-  
+
   const isLoading = ["loading", "submitting"].includes(fetcher.state) && fetcher.formMethod === "POST";
   const error = data?.error || fetcher.data?.error;
 
@@ -659,7 +659,8 @@ export default function Index() {
   };
 
   const loadOrdersWithTag = (cursor = null) => {
-    fetcher.load(`/your-route?cursor=${cursor}`);
+    // Make sure to update the route to match the exact loader route
+    fetcher.load(`?cursor=${cursor}`);
   };
 
   useEffect(() => {
@@ -727,9 +728,7 @@ export default function Index() {
 
       {!isLoading && unfulfilledOrder && (
         <BlockStack gap="500">
-          <Card
-            title={`Unfulfilled Items for Order #${unfulfilledOrder.orderNumber}`}
-          >
+          <Card title={`Unfulfilled Items for Order #${unfulfilledOrder.orderNumber}`}>
             <Text>
               Order Number: {unfulfilledOrder.orderNumber} Total Price:{" "}
               {unfulfilledOrder.totalPrice}
@@ -794,9 +793,7 @@ export default function Index() {
             <Button
               primary
               onClick={() => {
-                const preorderOrderId = fetcher.data.preorderCompletedOrder.id
-                  .split("/")
-                  .pop();
+                const preorderOrderId = fetcher.data.preorderCompletedOrder.id.split("/").pop();
                 window.open(`shopify:admin/orders/${preorderOrderId}`, "_blank");
               }}
             >
