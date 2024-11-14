@@ -19,12 +19,17 @@ import { authenticate } from "../shopify.server";
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
   const { admin } = await authenticate.admin(request);
+
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+
   try {
     const orderResponse = await admin.graphql(
       `#graphql
-      query getOrdersWithTag($query: String!) {
-        orders(first: 50, query: $query) {
+      query getOrdersWithTag($query: String!, $cursor: String) {
+        orders(first: 50, query: $query, after: $cursor) {
           edges {
+            cursor
             node {
               id
               name
@@ -51,10 +56,21 @@ export const loader = async ({ request }) => {
               }
             }
           }
+          pageInfo {
+            hasNextPage
+            hasPreviousPage
+            startCursor
+            endCursor
+          }
         }
       }
     `,
-      { variables: { query: 'status:open AND fulfillment_status:unfulfilled AND tag:"combine this"' } }
+      {
+        variables: {
+          query: 'status:open AND fulfillment_status:unfulfilled AND tag:"combine this"',
+          cursor: cursor,
+        },
+      }
     );
 
     const orderData = await orderResponse.json();
@@ -64,9 +80,15 @@ export const loader = async ({ request }) => {
       throw new Error("Error fetching orders");
     }
 
-    const ordersWithTag = orderData.data.orders.edges.map((edge) => edge.node);
+    // Filter orders that do not end with "-C"
+    const ordersWithTag = orderData.data.orders.edges
+      .map((edge) => edge.node)
+      .filter((order) => !order.name.endsWith("-C"));
 
-    return json({ ordersWithTag });
+    return json({
+      ordersWithTag,
+      pageInfo: orderData.data.orders.pageInfo,
+    });
   } catch (error) {
     console.error("Error fetching orders:", error);
     return json({ error: "Error fetching orders" });
@@ -604,18 +626,35 @@ export const action = async ({ request }) => {
   }
 };
 
+import { useEffect, useState } from "react";
+import { useFetcher, useLoaderData } from "@remix-run/react";
+import {
+  Page,
+  Layout,
+  Text,
+  Card,
+  Button,
+  BlockStack,
+  List,
+  TextField,
+  Spinner,
+  Checkbox,
+} from "@shopify/polaris";
+import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+
 export default function Index() {
   const data = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const [orderNumber, setOrderNumber] = useState("");
   const [combineOrdersVisible, setCombineOrdersVisible] = useState(false);
-  const [selectedOrders, setSelectedOrders] = useState([]); // Added selectedOrders state
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-
-  const ordersWithTag = data?.ordersWithTag || [];
+  const [selectedOrders, setSelectedOrders] = useState([]);
+  const [ordersWithTag, setOrdersWithTag] = useState(data?.ordersWithTag || []);
+  const [pageCursor, setPageCursor] = useState(null);
+  const [hasNextPage, setHasNextPage] = useState(data?.pageInfo?.hasNextPage);
+  const [hasPreviousPage, setHasPreviousPage] = useState(data?.pageInfo?.hasPreviousPage);
+  
+  const isLoading = ["loading", "submitting"].includes(fetcher.state) && fetcher.formMethod === "POST";
   const error = data?.error || fetcher.data?.error;
 
   const handleInputChange = (value) => {
@@ -624,18 +663,29 @@ export default function Index() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    // Reset combine orders visibility on new search
     setCombineOrdersVisible(false);
     fetcher.submit({ orderNumber }, { method: "POST" });
   };
 
   const handleCombineOrders = () => {
-    // Trigger a new form submission to combine orders
     fetcher.submit(
       { orderNumber, combineOrders: "true", selectedOrders: JSON.stringify(selectedOrders) },
       { method: "POST" }
     );
   };
+
+  const loadOrdersWithTag = (cursor = null) => {
+    fetcher.load(`/your-route?cursor=${cursor}`);
+  };
+
+  useEffect(() => {
+    if (fetcher.data) {
+      setOrdersWithTag(fetcher.data.ordersWithTag || []);
+      setPageCursor(fetcher.data.pageInfo?.endCursor || null);
+      setHasNextPage(fetcher.data.pageInfo?.hasNextPage);
+      setHasPreviousPage(fetcher.data.pageInfo?.hasPreviousPage);
+    }
+  }, [fetcher.data]);
 
   const unfulfilledOrder = fetcher.data?.unfulfilledOrder;
   const customerOrders = fetcher.data?.customerOrders || [];
@@ -649,10 +699,8 @@ export default function Index() {
       shopify.toast.show("No unfulfilled orders found.");
     }
 
-    // If customer has multiple orders, show the combine button
     if (customerOrders.length > 1) {
       setCombineOrdersVisible(true);
-      // Initialize selectedOrders with all customer order IDs
       setSelectedOrders(customerOrders.map(order => order.id));
     } else {
       setCombineOrdersVisible(false);
@@ -785,7 +833,6 @@ export default function Index() {
               <List.Item key={order.id}>
                 Order #{order.name} - {order.totalPrice} - Placed on:{" "}
                 {new Date(order.createdAt).toLocaleDateString()}
-                {/* Add button to search this order */}
                 <Button
                   onClick={() =>
                     fetcher.submit(
@@ -799,6 +846,22 @@ export default function Index() {
               </List.Item>
             ))}
           </List>
+
+          {/* Pagination buttons for orders with tag */}
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "16px" }}>
+            <Button
+              disabled={!hasPreviousPage}
+              onClick={() => loadOrdersWithTag(fetcher.data.pageInfo.startCursor)}
+            >
+              Previous
+            </Button>
+            <Button
+              disabled={!hasNextPage}
+              onClick={() => loadOrdersWithTag(pageCursor)}
+            >
+              Next
+            </Button>
+          </div>
         </Card>
       )}
     </Page>
