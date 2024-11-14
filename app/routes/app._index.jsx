@@ -18,6 +18,35 @@ export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const orderNumber = formData.get("orderNumber");
+  const completionTimestamp = formData.get("completionTimestamp");
+
+  if (completionTimestamp) {
+    // Tag the order with the timestamp as a note or metafield
+    const updateOrderResponse = await admin.graphql(
+      `#graphql
+      mutation addCompletionTimestamp($id: ID!, $note: String!) {
+        orderUpdate(input: { id: $id, note: $note }) {
+          order {
+            id
+            note
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+      {
+        variables: {
+          id: orderNumber, // Assuming this is the global ID; adjust as needed
+          note: `Order completed at: ${completionTimestamp}`,
+        },
+      }
+    );
+
+    return json({ success: true });
+  }
 
   try {
     const orderResponse = await admin.graphql(
@@ -122,19 +151,26 @@ export default function OrderLookupPage() {
       )
     : false;
 
-  const handleCompleteOrder = () => {
-    if (allSkusEntered && order) {
-      const globalId = order.id;
-      const numericId = globalId.split('/').pop();
-      window.open(`shopify:admin/orders/${numericId}`, "_blank");
-
-      // Reset the page states
-      setOrderNumber("");
-      setEnteredSkus([]);
-      setCurrentSku("");
-      fetcher.load("/"); // reloads the page or refetches data
-    }
-  };
+    const handleCompleteOrder = () => {
+      if (allSkusEntered && order) {
+        const globalId = order.id;
+        const numericId = globalId.split("/").pop();
+        const completionTimestamp = new Date().toISOString();
+    
+        fetcher.submit(
+          { orderNumber: globalId, completionTimestamp },
+          { method: "post" }
+        );
+    
+        window.open(`shopify:admin/orders/${numericId}`, "_blank");
+    
+        // Reset the page states
+        setOrderNumber("");
+        setEnteredSkus([]);
+        setCurrentSku("");
+        fetcher.load("/"); // reloads the page or refetches data
+      }
+    };
 
   // Automatically complete order once all SKUs are entered
   useEffect(() => {
