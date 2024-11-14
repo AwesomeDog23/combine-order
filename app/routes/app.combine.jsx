@@ -815,12 +815,10 @@ export default function Index() {
                 Order #{order.name} - {order.totalPrice} - Placed on:{" "}
                 {new Date(order.createdAt).toLocaleDateString()}
                 <Button
-                  onClick={() =>
-                    fetcher.submit(
-                      { orderNumber: order.name },
-                      { method: "POST" }
-                    )
-                  }
+                  onClick={() => {
+                    setOrderNumber(order.name); // Set the orderNumber state
+                    fetcher.submit({ orderNumber: order.name }, { method: "POST" });
+                  }}
                 >
                   View Order
                 </Button>
