@@ -1,0 +1,29 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "7a2b7b7c61c9c7fad050f4f68c67b55f"
+name = "combine-app-scanning"
+handle = "combine-app-scanning"
+application_url = "https://educational-shown-adjacent-limousines.trycloudflare.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = "barcode-testing.myshopify.com"
+include_config_on_deploy = true
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_orders,write_draft_orders,write_orders,write_products"
+
+[auth]
+redirect_urls = [
+  "https://educational-shown-adjacent-limousines.trycloudflare.com/auth/callback",
+  "https://educational-shown-adjacent-limousines.trycloudflare.com/auth/shopify/callback",
+  "https://educational-shown-adjacent-limousines.trycloudflare.com/api/auth/callback"
+]
+
+[webhooks]
+api_version = "2024-10"
+
+[pos]
+embedded = false

@@ -24,6 +24,7 @@ export default function App() {
           Home
         </Link>
         <Link to="/app/split-order">Split Orders</Link>
+        <Link to="/app/scanning">Scanning</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>
