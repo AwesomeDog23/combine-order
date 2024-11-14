@@ -27,7 +27,7 @@ export const loader = async ({ request }) => {
     const orderResponse = await admin.graphql(
       `#graphql
       query getOrdersWithTag($query: String!, $cursor: String) {
-        orders(first: 50, query: $query, after: $cursor) {
+        orders(first: 2, query: $query, after: $cursor) {
           edges {
             cursor
             node {
