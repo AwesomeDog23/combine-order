@@ -85,6 +85,12 @@ export const action = async ({ request }) => {
 
     const foundOrder = orderData.data.orders.edges[0].node;
 
+    // Exclude items with names starting with "Free and Easy Returns" or "Exchanges"
+    foundOrder.lineItems.edges = foundOrder.lineItems.edges.filter(
+      ({ node }) => 
+        !node.name.startsWith("Free and Easy Returns")
+    );
+    
     return json({ order: foundOrder });
   } catch (error) {
     return json({ error: error.message });
@@ -146,10 +152,10 @@ export default function OrderLookupPage() {
     enteredSkus.filter((enteredSku) => enteredSku.toLowerCase() === sku.toLowerCase()).length;
 
   const allSkusEntered = order
-    ? order.lineItems.edges.every(
-        ({ node }) => getEnteredQuantity(node.variant.sku) === node.quantity
-      )
-    : false;
+  ? order.lineItems.edges.every(
+      ({ node }) => getEnteredQuantity(node.variant.sku) === node.quantity
+    )
+  : false;
 
     const handleCompleteOrder = () => {
       if (allSkusEntered && order) {
