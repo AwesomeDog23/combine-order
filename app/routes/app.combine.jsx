@@ -119,8 +119,7 @@ export const action = async ({ request }) => {
     };
   };
 
-  const addressesMatch = (address1, address2, override = false) => {
-    if (override) return true; // If override is enabled, skip the check
+  const addressesMatch = (address1, address2) => {
     if (!address1 || !address2) return false;
     return (
       address1.firstName === address2.firstName &&
@@ -133,8 +132,6 @@ export const action = async ({ request }) => {
       address1.zip === address2.zip
     );
   };
-
-  const overrideAddressValue = formData.get("overrideAddress") === "true";
 
   try {
     // Fetch the order by order number and include variant IDs and shipping address
@@ -194,10 +191,8 @@ export const action = async ({ request }) => {
     const customerInfo = { firstName: foundOrder.customer.firstName, lastName: foundOrder.customer.lastName };
 
     // Normalize the shipping address of the found order for comparison, including the customer name
-    const normalizedOriginalAddress = normalizeAddress(
-      shippingAddress,
-      customerInfo
-    );
+    const normalizedOriginalAddress = normalizeAddress(shippingAddress, customerInfo);
+
     // Extract the numeric part of the customer ID from the GID format
     const numericCustomerId = customerId.split("/").pop();
 
@@ -264,7 +259,7 @@ export const action = async ({ request }) => {
     if (combineOrders && customerOrders.length > 0) {
       // Check if all shipping addresses are the same
       for (const order of customerOrders) {
-        if (!addressesMatch(normalizedOriginalAddress, order.shippingAddress, overrideAddressValue)) {
+        if (!addressesMatch(normalizedOriginalAddress, order.shippingAddress)) {
           throw new Error(
             `The shipping address for order ${order.orderNumber} does not match the original order's shipping address. All orders must have the same shipping address to be combined.`
           );
@@ -644,8 +639,6 @@ export default function Index() {
   const [pageCursor, setPageCursor] = useState(null);
   const [hasNextPage, setHasNextPage] = useState(data?.pageInfo?.hasNextPage);
   const [hasPreviousPage, setHasPreviousPage] = useState(data?.pageInfo?.hasPreviousPage);
-  const [overrideAddress, setOverrideAddress] = useState(false);
-
 
   const isLoading = ["loading", "submitting"].includes(fetcher.state) && fetcher.formMethod === "POST";
   const error = data?.error || fetcher.data?.error;
@@ -658,20 +651,11 @@ export default function Index() {
     event.preventDefault();
     setCombineOrdersVisible(false);
     fetcher.submit({ orderNumber }, { method: "POST" });
-
-    const handleOverrideChange = (checked) => {
-  setOverrideAddress(checked);
-};
   };
 
   const handleCombineOrders = () => {
     fetcher.submit(
-      {
-        orderNumber,
-        combineOrders: "true",
-        selectedOrders: JSON.stringify(selectedOrders),
-        overrideAddress: overrideAddress.toString(), // Include the override checkbox state
-      },
+      { orderNumber, combineOrders: "true", selectedOrders: JSON.stringify(selectedOrders) },
       { method: "POST" }
     );
   };
@@ -786,16 +770,9 @@ export default function Index() {
       )}
 
       {combineOrdersVisible && (
-        <Card sectioned>
-  <Checkbox
-    label="Override Address Verification (use the original order's address for all orders)"
-    checked={overrideAddress}
-    onChange={handleOverrideChange}
-  />
-  <Button fullWidth primary onClick={handleCombineOrders}>
-    Combine Orders
-  </Button>
-</Card>
+        <Button fullWidth primary onClick={handleCombineOrders}>
+          Combine Orders
+        </Button>
       )}
 
       {!isLoading && fetcher.data && fetcher.data.success && (
