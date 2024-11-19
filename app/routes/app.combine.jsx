@@ -645,6 +645,8 @@ export default function Index() {
   const [hasNextPage, setHasNextPage] = useState(data?.pageInfo?.hasNextPage);
   const [hasPreviousPage, setHasPreviousPage] = useState(data?.pageInfo?.hasPreviousPage);
   const [disableAddressCheck, setDisableAddressCheck] = useState(false);
+  const [isViewingOrderDetails, setIsViewingOrderDetails] = useState(false);
+  const [unfulfilledOrder, setUnfulfilledOrder] = useState(null);
 
   const isLoading = ["loading", "submitting"].includes(fetcher.state) && fetcher.formMethod === "POST";
   const error = data?.error || fetcher.data?.error;
@@ -656,6 +658,7 @@ export default function Index() {
   const handleSubmit = (event) => {
     event.preventDefault();
     setCombineOrdersVisible(false);
+    setIsViewingOrderDetails(true);
     fetcher.submit(
       { orderNumber, disableAddressCheck: disableAddressCheck.toString() },
       { method: "POST" }
@@ -674,21 +677,34 @@ export default function Index() {
     );
   };
 
-  const loadOrdersWithTag = (cursor = null) => {
-    // If cursor is null, it will load the first page
-    fetcher.load(`?cursor=${cursor || ""}`);
+  const handleBack = () => {
+    setIsViewingOrderDetails(false);
+    setOrderNumber("");
+    setCombineOrdersVisible(false);
+    setSelectedOrders([]);
+    setDisableAddressCheck(false);
+    setUnfulfilledOrder(null);
+    fetcher.load('/'); // Reload the loader data
   };
 
   useEffect(() => {
-    if (fetcher.data) {
-      setOrdersWithTag(fetcher.data.ordersWithTag || []);
-      setPageCursor(fetcher.data.pageInfo?.endCursor || null); // Update end cursor
-      setHasNextPage(fetcher.data.pageInfo?.hasNextPage || false); // Update next page
-      setHasPreviousPage(fetcher.data.pageInfo?.hasPreviousPage || false); // Update previous page
+    if (fetcher.data && fetcher.data.unfulfilledOrder) {
+      setUnfulfilledOrder(fetcher.data.unfulfilledOrder);
+    } else if (!isViewingOrderDetails) {
+      setUnfulfilledOrder(null);
     }
-  }, [fetcher.data]);
 
-  const unfulfilledOrder = fetcher.data?.unfulfilledOrder;
+    if (fetcher.data && fetcher.data.ordersWithTag) {
+      setOrdersWithTag(fetcher.data.ordersWithTag || []);
+      setPageCursor(fetcher.data.pageInfo?.endCursor || null);
+      setHasNextPage(fetcher.data.pageInfo?.hasNextPage || false);
+      setHasPreviousPage(fetcher.data.pageInfo?.hasPreviousPage || false);
+    } else if (!isViewingOrderDetails) {
+      // Reset to initial data when not viewing order details
+      setOrdersWithTag(data.ordersWithTag || []);
+    }
+  }, [fetcher.data, isViewingOrderDetails, data.ordersWithTag]);
+
   const customerOrders = fetcher.data?.customerOrders || [];
 
   useEffect(() => {
@@ -747,8 +763,9 @@ export default function Index() {
 
       {!isLoading && error && <Text color="critical">{error}</Text>}
 
-      {!isLoading && unfulfilledOrder && (
+      {isViewingOrderDetails && !isLoading && unfulfilledOrder && (
         <BlockStack gap="500">
+          <Button onClick={handleBack}>Back to Order List</Button>
           <Card title={`Unfulfilled Items for Order #${unfulfilledOrder.orderNumber}`}>
             <Text>
               Order Number: {unfulfilledOrder.orderNumber} Total Price:{" "}
@@ -824,11 +841,7 @@ export default function Index() {
         </BlockStack>
       )}
 
-      {!isLoading && fetcher.data && !unfulfilledOrder && !error && (
-        <Text>No unfulfilled orders found.</Text>
-      )}
-
-      {ordersWithTag.length > 0 && (
+      {!isViewingOrderDetails && ordersWithTag.length > 0 && (
         <Card title='Orders with tag "combine this"'>
           <List>
             {ordersWithTag.map((order) => (
@@ -837,7 +850,8 @@ export default function Index() {
                 {new Date(order.createdAt).toLocaleDateString()}
                 <Button
                   onClick={() => {
-                    setOrderNumber(order.name); // Set the orderNumber state
+                    setIsViewingOrderDetails(true);
+                    setOrderNumber(order.name);
                     fetcher.submit({ orderNumber: order.name }, { method: "POST" });
                   }}
                 >
