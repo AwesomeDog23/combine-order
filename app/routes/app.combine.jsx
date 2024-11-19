@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { json } from "@remix-run/node";
 import { useFetcher, useLoaderData } from "@remix-run/react";
@@ -104,6 +105,7 @@ export const action = async ({ request }) => {
   const orderNumber = formData.get("orderNumber");
   const combineOrders = formData.get("combineOrders") === "true";
   const disableAddressCheck = formData.get("disableAddressCheck") === "true";
+  const ignorePreorderSeparation = formData.get("ignorePreorderSeparation") === "true"; // New line
 
   // Get selectedOrders from formData
   const selectedOrders = JSON.parse(formData.get("selectedOrders") || "[]");
@@ -271,6 +273,208 @@ export const action = async ({ request }) => {
         }
       }
 
+      if (ignorePreorderSeparation) {
+        // Combine all items into a single variantQuantityMap
+        const variantQuantityMap = {};
+        const freeAndEasyVariantIds = new Set();
+        let orderNumberSuffix = null;
+
+        customerOrders.forEach((order) => {
+          order.lineItems.forEach((item) => {
+            if (item.variantId) {
+              const isFreeAndEasy = item.name.startsWith('Free and Easy Returns or Exchanges');
+
+              if (isFreeAndEasy) {
+                freeAndEasyVariantIds.add(item.variantId);
+                if (!orderNumberSuffix) {
+                  orderNumberSuffix = order.orderNumber + "-C";
+                }
+              } else {
+                if (variantQuantityMap[item.variantId]) {
+                  variantQuantityMap[item.variantId] += item.quantity;
+                } else {
+                  variantQuantityMap[item.variantId] = item.quantity;
+                }
+                if (!orderNumberSuffix) {
+                  orderNumberSuffix = order.orderNumber + "-C";
+                }
+              }
+            }
+          });
+        });
+
+        const combinedLineItems = Object.keys(variantQuantityMap).map((variantId) => ({
+          variantId,
+          quantity: variantQuantityMap[variantId],
+        }));
+
+        // Include 'Free and Easy Returns or Exchanges' items with quantity 1
+        freeAndEasyVariantIds.forEach((variantId) => {
+          combinedLineItems.push({
+            variantId,
+            quantity: 1,
+          });
+        });
+
+        console.log("Combined Line Items:", combinedLineItems);
+
+        let newOrder = null; // Initialize as null
+
+        // Create new order if there are line items
+        if (combinedLineItems.length > 0) {
+          const lineItems = combinedLineItems.map(item => ({
+            variantId: item.variantId,
+            quantity: item.quantity,
+            requiresShipping: true,
+            priceSet: {
+              shopMoney: {
+                amount: "0.00",
+                currencyCode: "USD",
+              }
+            },
+          }));
+
+          const orderCreateResponse = await admin.graphql(
+            `#graphql
+            mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+              orderCreate(order: $order, options: $options) {
+                order {
+                  id
+                  name
+                  requiresShipping
+                  totalTaxSet {
+                    shopMoney {
+                      amount
+                      currencyCode
+                    }
+                  }
+                  lineItems(first: 5) {
+                    nodes {
+                      variant {
+                        id
+                      }
+                      id
+                      title
+                      quantity
+                    }
+                  }
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+            {
+              variables: {
+                order: {
+                  name: orderNumberSuffix, // Set the name to the first original order's order number
+                  lineItems,
+                  customerId,
+                  shippingAddress: {
+                    firstName: customerInfo.firstName, // Include customer's first name
+                    lastName: customerInfo.lastName,   // Include customer's last name
+                    address1: shippingAddress.address1,
+                    address2: shippingAddress.address2,
+                    city: shippingAddress.city,
+                    country: shippingAddress.country,
+                    province: shippingAddress.province,
+                    zip: shippingAddress.zip,
+                  },
+                  billingAddress: {
+                    firstName: customerInfo.firstName, // Include customer's first name
+                    lastName: customerInfo.lastName,   // Include customer's last name
+                    address1: shippingAddress.address1,
+                    address2: shippingAddress.address2,
+                    city: shippingAddress.city,
+                    country: shippingAddress.country,
+                    province: shippingAddress.province,
+                    zip: shippingAddress.zip,
+                  },
+                  shippingLines: [
+                    {
+                      title: "Standard Shipping",
+                      priceSet: {
+                        shopMoney: {
+                          amount: "0.00", // The shipping cost as a string
+                          currencyCode: "USD", // The currency code
+                        },
+                      },
+                      code: "standard",
+                      source: "Custom",
+                    },
+                  ],
+                  financialStatus: "PAID",
+                  tags: [`Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`],
+                },
+                options: {
+                  inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
+                  sendReceipt: true,
+                },
+              },
+            }
+          );
+
+          const orderCreateData = await orderCreateResponse.json();
+
+          if (orderCreateData.data.orderCreate.userErrors.length) {
+            throw new Error(
+              orderCreateData.data.orderCreate.userErrors
+                .map((e) => e.message)
+                .join(", ")
+            );
+          }
+
+          newOrder = orderCreateData.data.orderCreate.order;
+        } else {
+          throw new Error("No items to combine");
+        }
+
+        // Cancel original orders
+        for (const order of customerOrders) {
+          const orderCancelResponse = await admin.graphql(
+            `#graphql
+            mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
+              orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
+                job {
+                  id
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+            {
+              variables: {
+                orderId: order.id,
+                reason: "OTHER",
+                refund: false,
+                restock: true,
+                staffnote: 'Order combined with other orders',
+              },
+            }
+          );
+
+          const cancelOrderData = await orderCancelResponse.json();
+
+          if (cancelOrderData.data.orderCancel.userErrors.length) {
+            throw new Error(
+              cancelOrderData.data.orderCancel.userErrors
+                .map((e) => e.message)
+                .join(", ")
+            );
+          }
+        }
+
+        return json({
+          success: true,
+          message: "New combined order created, and original orders canceled successfully",
+          completedOrder: newOrder,
+        });
+      } else {
       // Aggregate quantities for duplicate variants, separating 'PREORDER' items
       const variantQuantityMap = {}; // For regular items
       const preorderVariantQuantityMap = {}; // For 'PREORDER' items
@@ -612,6 +816,7 @@ export const action = async ({ request }) => {
         completedOrder: newRegularOrder,
         preorderCompletedOrder: newPreorderOrder,
       });
+      }
     }
 
     return json({
@@ -645,6 +850,7 @@ export default function Index() {
   const [hasNextPage, setHasNextPage] = useState(data?.pageInfo?.hasNextPage);
   const [hasPreviousPage, setHasPreviousPage] = useState(data?.pageInfo?.hasPreviousPage);
   const [disableAddressCheck, setDisableAddressCheck] = useState(false);
+  const [ignorePreorderSeparation, setIgnorePreorderSeparation] = useState(false); // New line
   const [isViewingOrderDetails, setIsViewingOrderDetails] = useState(false);
   const [unfulfilledOrder, setUnfulfilledOrder] = useState(null);
 
@@ -672,6 +878,7 @@ export default function Index() {
         combineOrders: "true",
         selectedOrders: JSON.stringify(selectedOrders),
         disableAddressCheck: disableAddressCheck.toString(),
+        ignorePreorderSeparation: ignorePreorderSeparation.toString(), // New line
       },
       { method: "POST" }
     );
@@ -683,6 +890,7 @@ export default function Index() {
     setCombineOrdersVisible(false);
     setSelectedOrders([]);
     setDisableAddressCheck(false);
+    setIgnorePreorderSeparation(false); // Reset the new state
     setUnfulfilledOrder(null);
     fetcher.load('/'); // Reload the loader data
   };
@@ -750,6 +958,11 @@ export default function Index() {
                 label="Disable address verification "
                 checked={disableAddressCheck}
                 onChange={(newChecked) => setDisableAddressCheck(newChecked)}
+              />
+              <Checkbox
+                label="Ignore preorder "
+                checked={ignorePreorderSeparation}
+                onChange={(newChecked) => setIgnorePreorderSeparation(newChecked)}
               />
               <Button primary submit>
                 Search Orders
@@ -820,7 +1033,7 @@ export default function Index() {
               primary
               onClick={() => {
                 const orderId = fetcher.data.completedOrder.id.split("/").pop();
-                window.open(`shopify:admin/orders/${orderId}`, "_blank");
+                window.open(`shopify:/admin/orders/${orderId}`, "_blank");
               }}
             >
               View New Order #{fetcher.data.completedOrder.name}
@@ -832,10 +1045,10 @@ export default function Index() {
               primary
               onClick={() => {
                 const preorderOrderId = fetcher.data.preorderCompletedOrder.id.split("/").pop();
-                window.open(`shopify:admin/orders/${preorderOrderId}`, "_blank");
+                window.open(`shopify:/admin/orders/${preorderOrderId}`, "_blank");
               }}
             >
-              View Preorder Order #{fetcher.data.preorderCompletedOrder.name}
+              View New Preorder Order #{fetcher.data.preorderCompletedOrder.name}
             </Button>
           )}
         </BlockStack>
