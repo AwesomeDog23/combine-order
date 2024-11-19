@@ -20,11 +20,8 @@ export const loader = async ({ request }) => {
   await authenticate.admin(request);
   const { admin } = await authenticate.admin(request);
 
-  const url = new URL(request.url);
-  const cursor = url.searchParams.get("cursor");
-
-  try {
-    const orderResponse = await admin.graphql(
+  const fetchAllOrders = async (cursor = null, accumulatedOrders = []) => {
+    const response = await admin.graphql(
       `#graphql
       query getOrdersWithTag($query: String!, $cursor: String) {
         orders(first: 50, query: $query, after: $cursor) {
@@ -58,13 +55,10 @@ export const loader = async ({ request }) => {
           }
           pageInfo {
             hasNextPage
-            hasPreviousPage
-            startCursor
             endCursor
           }
         }
-      }
-    `,
+      }`,
       {
         variables: {
           query: 'status:open AND fulfillment_status:unfulfilled AND tag:"combine this"',
@@ -73,21 +67,30 @@ export const loader = async ({ request }) => {
       }
     );
 
-    const orderData = await orderResponse.json();
-
-    if (orderData.errors) {
-      console.error("Error fetching orders:", orderData.errors);
+    const data = await response.json();
+    if (data.errors) {
+      console.error("Error fetching orders:", data.errors);
       throw new Error("Error fetching orders");
     }
 
+    const newOrders = data.data.orders.edges.map((edge) => edge.node);
+    const allOrders = [...accumulatedOrders, ...newOrders];
+
+    if (data.data.orders.pageInfo.hasNextPage) {
+      return fetchAllOrders(data.data.orders.pageInfo.endCursor, allOrders);
+    }
+
+    return allOrders;
+  };
+
+  try {
+    const ordersWithTag = await fetchAllOrders();
+
     // Filter orders that do not end with "-C"
-    const ordersWithTag = orderData.data.orders.edges
-      .map((edge) => edge.node)
-      .filter((order) => !order.name.endsWith("-C"));
+    const filteredOrders = ordersWithTag.filter((order) => !order.name.endsWith("-B"));
 
     return json({
-      ordersWithTag,
-      pageInfo: orderData.data.orders.pageInfo,
+      ordersWithTag: filteredOrders,
     });
   } catch (error) {
     console.error("Error fetching orders:", error);
@@ -658,7 +661,7 @@ export default function Index() {
       { method: "POST" }
     );
   };
-  
+
   const handleCombineOrders = () => {
     fetcher.submit(
       {
@@ -672,16 +675,16 @@ export default function Index() {
   };
 
   const loadOrdersWithTag = (cursor = null) => {
-    // Make sure to update the route to match the exact loader route
-    fetcher.load(`?cursor=${cursor}`);
+    // If cursor is null, it will load the first page
+    fetcher.load(`?cursor=${cursor || ""}`);
   };
 
   useEffect(() => {
     if (fetcher.data) {
       setOrdersWithTag(fetcher.data.ordersWithTag || []);
-      setPageCursor(fetcher.data.pageInfo?.endCursor || null);
-      setHasNextPage(fetcher.data.pageInfo?.hasNextPage);
-      setHasPreviousPage(fetcher.data.pageInfo?.hasPreviousPage);
+      setPageCursor(fetcher.data.pageInfo?.endCursor || null); // Update end cursor
+      setHasNextPage(fetcher.data.pageInfo?.hasNextPage || false); // Update next page
+      setHasPreviousPage(fetcher.data.pageInfo?.hasPreviousPage || false); // Update previous page
     }
   }, [fetcher.data]);
 
@@ -720,22 +723,22 @@ export default function Index() {
       <Layout>
         <Layout.Section>
           <Card sectioned>
-          <form onSubmit={handleSubmit}>
-  <TextField
-    label="Order Number"
-    value={orderNumber}
-    onChange={handleInputChange}
-    placeholder="Enter Order Number"
-  />
-  <Checkbox
-    label="Disable address verification "
-    checked={disableAddressCheck}
-    onChange={(newChecked) => setDisableAddressCheck(newChecked)}
-  />
-  <Button primary submit>
-    Search Orders
-  </Button>
-</form>
+            <form onSubmit={handleSubmit}>
+              <TextField
+                label="Order Number"
+                value={orderNumber}
+                onChange={handleInputChange}
+                placeholder="Enter Order Number"
+              />
+              <Checkbox
+                label="Disable address verification "
+                checked={disableAddressCheck}
+                onChange={(newChecked) => setDisableAddressCheck(newChecked)}
+              />
+              <Button primary submit>
+                Search Orders
+              </Button>
+            </form>
           </Card>
         </Layout.Section>
       </Layout>
@@ -843,22 +846,6 @@ export default function Index() {
               </List.Item>
             ))}
           </List>
-
-          {/* Pagination buttons for orders with tag */}
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "16px" }}>
-            <Button
-              disabled={!hasPreviousPage}
-              onClick={() => loadOrdersWithTag(fetcher.data.pageInfo.startCursor)}
-            >
-              Previous
-            </Button>
-            <Button
-              disabled={!hasNextPage}
-              onClick={() => loadOrdersWithTag(pageCursor)}
-            >
-              Next
-            </Button>
-          </div>
         </Card>
       )}
     </Page>
