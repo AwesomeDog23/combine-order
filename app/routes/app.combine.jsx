@@ -99,7 +99,8 @@ export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const orderNumber = formData.get("orderNumber");
-  const combineOrders = formData.get("combineOrders") === "true"; // Convert to boolean
+  const combineOrders = formData.get("combineOrders") === "true";
+  const disableAddressCheck = formData.get("disableAddressCheck") === "true";
 
   // Get selectedOrders from formData
   const selectedOrders = JSON.parse(formData.get("selectedOrders") || "[]");
@@ -257,12 +258,13 @@ export const action = async ({ request }) => {
     }
 
     if (combineOrders && customerOrders.length > 0) {
-      // Check if all shipping addresses are the same
-      for (const order of customerOrders) {
-        if (!addressesMatch(normalizedOriginalAddress, order.shippingAddress)) {
-          throw new Error(
-            `The shipping address for order ${order.orderNumber} does not match the original order's shipping address. All orders must have the same shipping address to be combined.`
-          );
+      if (!disableAddressCheck) {
+        for (const order of customerOrders) {
+          if (!addressesMatch(normalizedOriginalAddress, order.shippingAddress)) {
+            throw new Error(
+              `The shipping address for order ${order.orderNumber} does not match the original order's shipping address. All orders must have the same shipping address to be combined.`
+            );
+          }
         }
       }
 
@@ -639,6 +641,7 @@ export default function Index() {
   const [pageCursor, setPageCursor] = useState(null);
   const [hasNextPage, setHasNextPage] = useState(data?.pageInfo?.hasNextPage);
   const [hasPreviousPage, setHasPreviousPage] = useState(data?.pageInfo?.hasPreviousPage);
+  const [disableAddressCheck, setDisableAddressCheck] = useState(false);
 
   const isLoading = ["loading", "submitting"].includes(fetcher.state) && fetcher.formMethod === "POST";
   const error = data?.error || fetcher.data?.error;
@@ -650,12 +653,20 @@ export default function Index() {
   const handleSubmit = (event) => {
     event.preventDefault();
     setCombineOrdersVisible(false);
-    fetcher.submit({ orderNumber }, { method: "POST" });
+    fetcher.submit(
+      { orderNumber, disableAddressCheck: disableAddressCheck.toString() },
+      { method: "POST" }
+    );
   };
-
+  
   const handleCombineOrders = () => {
     fetcher.submit(
-      { orderNumber, combineOrders: "true", selectedOrders: JSON.stringify(selectedOrders) },
+      {
+        orderNumber,
+        combineOrders: "true",
+        selectedOrders: JSON.stringify(selectedOrders),
+        disableAddressCheck: disableAddressCheck.toString(),
+      },
       { method: "POST" }
     );
   };
@@ -709,17 +720,22 @@ export default function Index() {
       <Layout>
         <Layout.Section>
           <Card sectioned>
-            <form onSubmit={handleSubmit}>
-              <TextField
-                label="Order Number"
-                value={orderNumber}
-                onChange={handleInputChange}
-                placeholder="Enter Order Number"
-              />
-              <Button primary submit>
-                Search Orders
-              </Button>
-            </form>
+          <form onSubmit={handleSubmit}>
+  <TextField
+    label="Order Number"
+    value={orderNumber}
+    onChange={handleInputChange}
+    placeholder="Enter Order Number"
+  />
+  <Checkbox
+    label="Disable address verification when combining orders"
+    checked={disableAddressCheck}
+    onChange={(newChecked) => setDisableAddressCheck(newChecked)}
+  />
+  <Button primary submit>
+    Search Orders
+  </Button>
+</form>
           </Card>
         </Layout.Section>
       </Layout>
