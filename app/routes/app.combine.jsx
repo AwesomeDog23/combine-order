@@ -728,7 +728,7 @@ export default function Index() {
     placeholder="Enter Order Number"
   />
   <Checkbox
-    label="Disable address verification when combining orders"
+    label="Disable address verification "
     checked={disableAddressCheck}
     onChange={(newChecked) => setDisableAddressCheck(newChecked)}
   />
