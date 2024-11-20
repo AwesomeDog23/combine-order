@@ -88,7 +88,7 @@ export const loader = async ({ request }) => {
     const ordersWithTag = await fetchAllOrders();
 
     // Filter orders that do not end with "-C"
-    const filteredOrders = ordersWithTag.filter((order) => !order.name.endsWith("-B"));
+    const filteredOrders = ordersWithTag.filter((order) => !order.name.endsWith("-C"));
 
     return json({
       ordersWithTag: filteredOrders,
