@@ -25,7 +25,7 @@ export const loader = async ({ request }) => {
     const response = await admin.graphql(
       `#graphql
       query getOrdersWithTag($query: String!, $cursor: String) {
-        orders(first: 50, query: $query, after: $cursor) {
+        orders(first: 250, query: $query, after: $cursor) {
           edges {
             cursor
             node {
@@ -34,7 +34,7 @@ export const loader = async ({ request }) => {
               tags
               totalPrice
               createdAt
-              lineItems(first: 10) {
+              lineItems(first: 250) {
                 edges {
                   node {
                     id
@@ -206,14 +206,14 @@ export const action = async ({ request }) => {
     const customerOrdersResponse = await admin.graphql(
       `#graphql
       query getCustomerOrders($query: String!) {
-        orders(first: 10, sortKey: CREATED_AT, reverse: true, query: $query) {
+        orders(first: 250, sortKey: CREATED_AT, reverse: true, query: $query) {
           edges {
             node {
               id
               name
               totalPrice
               createdAt
-              lineItems(first: 10) {
+              lineItems(first: 250) {
                 edges {
                   node {
                     id
