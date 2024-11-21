@@ -150,7 +150,7 @@ export const action = async ({ request }) => {
               id
               name
               totalPrice
-              lineItems(first: 10) {
+              lineItems(first: 250) {
                 edges {
                   node {
                     id
