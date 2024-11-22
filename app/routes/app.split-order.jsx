@@ -22,7 +22,6 @@ export const action = async ({ request }) => {
   const splitOrder = formData.get("splitOrder") === "true";
 
   try {
-    // Fetch the order by order number
     const orderResponse = await admin.graphql(
       `#graphql
       query getOrder($query: String!) {
@@ -72,7 +71,6 @@ export const action = async ({ request }) => {
     const foundOrder = orderData.data.orders.edges[0].node;
 
     if (!splitOrder) {
-      // Return the order data
       return json({ order: foundOrder });
     } else {
       const splitQuantities = JSON.parse(formData.get("splitQuantities"));
@@ -80,13 +78,11 @@ export const action = async ({ request }) => {
       const selectedItems = [];
       const unselectedItems = [];
 
-      // Split the items based on the provided split quantities
       foundOrder.lineItems.edges.forEach((itemEdge) => {
         const item = itemEdge.node;
         const splitQuantity = splitQuantities[item.variant.id] || 0;
 
         if (splitQuantity > 0) {
-          // Push items with the split quantity to the first order
           selectedItems.push({
             ...item,
             quantity: splitQuantity,
@@ -95,7 +91,6 @@ export const action = async ({ request }) => {
 
         const remainingQuantity = item.quantity - splitQuantity;
         if (remainingQuantity > 0) {
-          // Push remaining items to the second order
           unselectedItems.push({
             ...item,
             quantity: remainingQuantity,
@@ -103,41 +98,47 @@ export const action = async ({ request }) => {
         }
       });
 
-      // If there are no unselected items, handle the error here
       if (unselectedItems.length === 0) {
         return json({
           error: "There are no items left to create the second order.",
         });
       }
 
-      // Prepare line items for the new orders
       const selectedLineItems = selectedItems.map((item) => ({
         variantId: item.variant.id,
         quantity: item.quantity,
+        priceSet: {
+          shopMoney: {
+            amount: "0.00",
+            currencyCode: "USD",
+          },
+        },
       }));
 
       const unselectedLineItems = unselectedItems.map((item) => ({
         variantId: item.variant.id,
         quantity: item.quantity,
+        priceSet: {
+          shopMoney: {
+            amount: "0.00",
+            currencyCode: "USD",
+          },
+        },
       }));
 
       const customerId = foundOrder.customer?.id;
       const email = foundOrder.customer?.email;
       const shippingAddress = foundOrder.shippingAddress;
 
-      // Create the first draft order with selected items
       let newOrder1 = null;
       if (selectedLineItems.length > 0) {
-        const draftOrderResponse1 = await admin.graphql(
+        const orderCreateResponse1 = await admin.graphql(
           `#graphql
-          mutation draftOrderCreate($input: DraftOrderInput!) {
-            draftOrderCreate(input: $input) {
-              draftOrder {
+          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+            orderCreate(order: $order, options: $options) {
+              order {
                 id
-                order {
-                  id
-                  name
-                }
+                name
               }
               userErrors {
                 field
@@ -145,75 +146,60 @@ export const action = async ({ request }) => {
               }
             }
           }
-        `,
+          `,
           {
             variables: {
-              input: {
+              order: {
+                name: `${orderNumber}-S1`,
                 lineItems: selectedLineItems,
                 customerId,
-                email,
                 shippingAddress,
+                billingAddress: shippingAddress,
+                shippingLines: [
+                  {
+                    title: "Standard Shipping",
+                    priceSet: {
+                      shopMoney: {
+                        amount: "0.00",
+                        currencyCode: "USD",
+                      },
+                    },
+                    code: "standard",
+                    source: "Custom",
+                  },
+                ],
+                financialStatus: "PAID",
+                tags: [`Split Order: ${new Date().toISOString()}`],
+              },
+              options: {
+                inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
+                sendReceipt: true,
               },
             },
           }
         );
 
-        const draftOrderData1 = await draftOrderResponse1.json();
-        if (draftOrderData1.data.draftOrderCreate.userErrors.length) {
+        const orderCreateData1 = await orderCreateResponse1.json();
+        if (orderCreateData1.data.orderCreate.userErrors.length) {
           return json({
-            error: draftOrderData1.data.draftOrderCreate.userErrors
+            error: orderCreateData1.data.orderCreate.userErrors
               .map((e) => e.message)
               .join(", "),
           });
         }
 
-        // Complete the draft order
-        const draftOrderId1 = draftOrderData1.data.draftOrderCreate.draftOrder.id;
-        const completeResponse1 = await admin.graphql(
-          `#graphql
-          mutation draftOrderComplete($id: ID!) {
-            draftOrderComplete(id: $id) {
-              draftOrder {
-                order {
-                  id
-                  name
-                }
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-          { variables: { id: draftOrderId1 } }
-        );
-
-        const completeData1 = await completeResponse1.json();
-        if (completeData1.data.draftOrderComplete.userErrors.length) {
-          return json({
-            error: completeData1.data.draftOrderComplete.userErrors
-              .map((e) => e.message)
-              .join(", "),
-          });
-        }
-
-        newOrder1 = completeData1.data.draftOrderComplete.draftOrder.order;
+        newOrder1 = orderCreateData1.data.orderCreate.order;
       }
 
-      // Ensure unselected items always result in a second order
       let newOrder2 = null;
       if (unselectedLineItems.length > 0) {
-        const draftOrderResponse2 = await admin.graphql(
+        const orderCreateResponse2 = await admin.graphql(
           `#graphql
-          mutation draftOrderCreate($input: DraftOrderInput!) {
-            draftOrderCreate(input: $input) {
-              draftOrder {
+          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+            orderCreate(order: $order, options: $options) {
+              order {
                 id
-                order {
-                  id
-                  name
-                }
+                name
               }
               userErrors {
                 field
@@ -221,60 +207,49 @@ export const action = async ({ request }) => {
               }
             }
           }
-        `,
+          `,
           {
             variables: {
-              input: {
+              order: {
+                name: `${orderNumber}-S2`,
                 lineItems: unselectedLineItems,
                 customerId,
-                email,
                 shippingAddress,
+                billingAddress: shippingAddress,
+                shippingLines: [
+                  {
+                    title: "Standard Shipping",
+                    priceSet: {
+                      shopMoney: {
+                        amount: "0.00",
+                        currencyCode: "USD",
+                      },
+                    },
+                    code: "standard",
+                    source: "Custom",
+                  },
+                ],
+                financialStatus: "PAID",
+                tags: [`Split Order: ${new Date().toISOString()}`],
+              },
+              options: {
+                inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
+                sendReceipt: true,
               },
             },
           }
         );
 
-        const draftOrderData2 = await draftOrderResponse2.json();
-        if (draftOrderData2.data.draftOrderCreate.userErrors.length) {
+        const orderCreateData2 = await orderCreateResponse2.json();
+        if (orderCreateData2.data.orderCreate.userErrors.length) {
           return json({
-            error: draftOrderData2.data.draftOrderCreate.userErrors
+            error: orderCreateData2.data.orderCreate.userErrors
               .map((e) => e.message)
               .join(", "),
           });
         }
 
-        // Complete the second draft order
-        const draftOrderId2 = draftOrderData2.data.draftOrderCreate.draftOrder.id;
-        const completeResponse2 = await admin.graphql(
-          `#graphql
-          mutation draftOrderComplete($id: ID!) {
-            draftOrderComplete(id: $id) {
-              draftOrder {
-                order {
-                  id
-                  name
-                }
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-          { variables: { id: draftOrderId2 } }
-        );
-
-        const completeData2 = await completeResponse2.json();
-        if (completeData2.data.draftOrderComplete.userErrors.length) {
-          return json({
-            error: completeData2.data.draftOrderComplete.userErrors
-              .map((e) => e.message)
-              .join(", "),
-          });
-        }
-
-        newOrder2 = completeData2.data.draftOrderComplete.draftOrder.order;
+        newOrder2 = orderCreateData2.data.orderCreate.order;
       }
 
       // Cancel the original order only if both orders are created
@@ -354,7 +329,6 @@ export default function SplitOrderPage() {
   };
 
   const handleSplitOrder = () => {
-    // Prepare the split quantities to send to the server
     fetcher.submit(
       {
         orderNumber,
