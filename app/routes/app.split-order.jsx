@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { json } from "@remix-run/node";
-import { useFetcher } from "@remix-run/react";
+import { useFetcher, useLoaderData } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -11,9 +11,95 @@ import {
   List,
   TextField,
   Spinner,
+  Checkbox,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
+
+// Loader function to fetch orders with the tag "split this"
+export const loader = async ({ request }) => {
+  await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
+
+  const fetchAllOrders = async (cursor = null, accumulatedOrders = []) => {
+    const response = await admin.graphql(
+      `#graphql
+      query getOrdersWithTag($query: String!, $cursor: String) {
+        orders(first: 250, query: $query, after: $cursor) {
+          edges {
+            cursor
+            node {
+              id
+              name
+              tags
+              totalPrice
+              createdAt
+              lineItems(first: 250) {
+                edges {
+                  node {
+                    id
+                    name
+                    quantity
+                    variant {
+                      id
+                    }
+                  }
+                }
+              }
+              customer {
+                id
+                firstName
+                lastName
+                email
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }`,
+      {
+        variables: {
+          query: 'status:open AND fulfillment_status:unfulfilled AND tag:"split this"',
+          cursor: cursor,
+        },
+      }
+    );
+
+    const data = await response.json();
+    if (data.errors) {
+      console.error("Error fetching orders:", data.errors);
+      throw new Error("Error fetching orders");
+    }
+
+    const newOrders = data.data.orders.edges.map((edge) => edge.node);
+    const allOrders = [...accumulatedOrders, ...newOrders];
+
+    if (data.data.orders.pageInfo.hasNextPage) {
+      return fetchAllOrders(data.data.orders.pageInfo.endCursor, allOrders);
+    }
+
+    return allOrders;
+  };
+
+  try {
+    const ordersWithTag = await fetchAllOrders();
+
+    // Filter orders that do not end with "-S1" or "-S2"
+    const filteredOrders = ordersWithTag.filter(
+      (order) => !order.name.endsWith("-S1") && !order.name.endsWith("-S2")
+    );
+
+    return json({
+      ordersWithTag: filteredOrders,
+    });
+  } catch (error) {
+    console.error("Error fetching orders:", error);
+    return json({ error: "Error fetching orders" });
+  }
+};
 
 export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
@@ -299,10 +385,13 @@ export const action = async ({ request }) => {
 };
 
 export default function SplitOrderPage() {
+  const data = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const [orderNumber, setOrderNumber] = useState("");
   const [splitQuantities, setSplitQuantities] = useState({});
+  const [isViewingOrderDetails, setIsViewingOrderDetails] = useState(false);
+  const [ordersWithTag, setOrdersWithTag] = useState(data?.ordersWithTag || []);
 
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
@@ -318,6 +407,7 @@ export default function SplitOrderPage() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    setIsViewingOrderDetails(true);
     fetcher.submit({ orderNumber }, { method: "POST" });
   };
 
@@ -339,13 +429,30 @@ export default function SplitOrderPage() {
     );
   };
 
+  const handleBack = () => {
+    setIsViewingOrderDetails(false);
+    setOrderNumber("");
+    setSplitQuantities({});
+    fetcher.load("/"); // Reload the loader data
+  };
+
   useEffect(() => {
     if (error) {
       shopify.toast.show(error);
     } else if (fetcher.data && fetcher.data.success) {
       shopify.toast.show(fetcher.data.message);
+      setIsViewingOrderDetails(false);
+      fetcher.load("/"); // Reload the loader data
     }
   }, [fetcher.data, error, shopify]);
+
+  useEffect(() => {
+    if (fetcher.data && fetcher.data.order) {
+      setIsViewingOrderDetails(true);
+    } else if (fetcher.data && fetcher.data.success) {
+      setIsViewingOrderDetails(false);
+    }
+  }, [fetcher.data]);
 
   return (
     <Page>
@@ -373,8 +480,9 @@ export default function SplitOrderPage() {
 
       {!isLoading && error && <Text color="critical">{error}</Text>}
 
-      {!isLoading && order && (
+      {isViewingOrderDetails && !isLoading && order && (
         <BlockStack gap="500">
+          <Button onClick={handleBack}>Back to Order List</Button>
           <Card title={`Order #${order.name}`}>
             <List>
               {order.lineItems.edges.map((itemEdge) => {
@@ -410,7 +518,7 @@ export default function SplitOrderPage() {
               primary
               onClick={() => {
                 const orderId = fetcher.data.newOrder1.id.split("/").pop();
-                window.open(`shopify:admin/orders/${orderId}`, "_blank");
+                window.open(`shopify:/admin/orders/${orderId}`, "_blank");
               }}
             >
               View New Order #{fetcher.data.newOrder1.name}
@@ -421,13 +529,34 @@ export default function SplitOrderPage() {
               primary
               onClick={() => {
                 const orderId = fetcher.data.newOrder2.id.split("/").pop();
-                window.open(`shopify:admin/orders/${orderId}`, "_blank");
+                window.open(`shopify:/admin/orders/${orderId}`, "_blank");
               }}
             >
               View New Order #{fetcher.data.newOrder2.name}
             </Button>
           )}
         </BlockStack>
+      )}
+
+      {!isLoading && ordersWithTag.length > 0 && (
+        <Card title='Orders with tag "split this"'>
+          <List>
+            {ordersWithTag.map((order) => (
+              <List.Item key={order.id}>
+                Order #{order.name} - {order.totalPrice} - Placed on:{" "}
+                {new Date(order.createdAt).toLocaleDateString()}
+                <Button
+                  onClick={() => {
+                    setOrderNumber(order.name);
+                    fetcher.submit({ orderNumber: order.name }, { method: "POST" });
+                  }}
+                >
+                  View Order
+                </Button>
+              </List.Item>
+            ))}
+          </List>
+        </Card>
       )}
     </Page>
   );
