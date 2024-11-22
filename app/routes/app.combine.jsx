@@ -942,7 +942,7 @@ export default function Index() {
 
   return (
     <Page>
-      <TitleBar title="Order Lookup" />
+      <TitleBar title="Combine Orders" />
 
       <Layout>
         <Layout.Section>
