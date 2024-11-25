@@ -941,93 +941,107 @@ export default function Index() {
   };
 
   return (
-    <Page>
-      <TitleBar title="Combine Orders" />
+<Page>
+  <TitleBar title="Combine Orders" />
 
-      <Layout>
-        <Layout.Section>
-          <Card sectioned>
-            <form onSubmit={handleSubmit}>
-              <TextField
-                label="Order Number"
-                value={orderNumber}
-                onChange={handleInputChange}
-                placeholder="Enter Order Number"
-              />
-              <Checkbox
-                label="Disable address verification "
-                checked={disableAddressCheck}
-                onChange={(newChecked) => setDisableAddressCheck(newChecked)}
-              />
-              <Checkbox
-                label="Ignore preorder "
-                checked={ignorePreorderSeparation}
-                onChange={(newChecked) => setIgnorePreorderSeparation(newChecked)}
-              />
-              <Button primary submit>
-                Search Orders
-              </Button>
-            </form>
-          </Card>
-        </Layout.Section>
-      </Layout>
+  <Layout>
+    <Layout.Section>
+      <Card sectioned title="Search Orders">
+        <form onSubmit={handleSubmit}>
+          <BlockStack spacing="tight">
+            <TextField
+              label="Order Number"
+              value={orderNumber}
+              onChange={handleInputChange}
+              placeholder="Enter Order Number"
+            />
+            <Checkbox
+              label="Disable address verification"
+              checked={disableAddressCheck}
+              onChange={(newChecked) => setDisableAddressCheck(newChecked)}
+            />
+            <Checkbox
+              label="Ignore preorder separation"
+              checked={ignorePreorderSeparation}
+              onChange={(newChecked) => setIgnorePreorderSeparation(newChecked)}
+            />
+            <Button primary submit>
+              Search Orders
+            </Button>
+          </BlockStack>
+        </form>
+      </Card>
+    </Layout.Section>
 
-      {isLoading && <Spinner accessibilityLabel="Loading orders" size="large" />}
+    {isLoading && (
+      <div className="loading-overlay">
+        <Spinner accessibilityLabel="Loading orders" size="large" />
+      </div>
+    )}
 
-      {!isLoading && error && <Text color="critical">{error}</Text>}
+    {error && (
+      <Layout.Section>
+        <Card sectioned>
+          <Text color="critical">{error}</Text>
+        </Card>
+      </Layout.Section>
+    )}
 
-      {isViewingOrderDetails && !isLoading && unfulfilledOrder && (
-        <BlockStack gap="500">
-          <Button onClick={handleBack}>Back to Order List</Button>
-          <Card title={`Unfulfilled Items for Order #${unfulfilledOrder.orderNumber}`}>
-            <Text>
-              Order Number: {unfulfilledOrder.orderNumber} Total Price:{" "}
-              {unfulfilledOrder.totalPrice}
-            </Text>
+    {!isLoading && isViewingOrderDetails && unfulfilledOrder && (
+      <Layout.Section>
+        <Button onClick={handleBack}>Back to Order List</Button>
+        <Card sectioned title={`Unfulfilled Items for Order #${unfulfilledOrder.orderNumber}`}>
+          <Text>
+            Total Price: {unfulfilledOrder.totalPrice}
+          </Text>
+          <List>
+            {unfulfilledOrder.unfulfilledItems.map((item) => (
+              <List.Item key={item.id}>
+                {item.name} - Quantity: {item.quantity}
+              </List.Item>
+            ))}
+          </List>
+        </Card>
+
+        {customerOrders.length > 0 && (
+          <Card title="Latest Orders for this Customer">
             <List>
-              {unfulfilledOrder.unfulfilledItems.map((item) => (
-                <List.Item key={item.id}>
-                  {item.name} - Quantity: {item.quantity}
+              {customerOrders.map((order) => (
+                <List.Item key={order.id}>
+                  <Checkbox
+                    label={`Order #${order.orderNumber} - ${order.totalPrice} - Placed on: ${new Date(
+                      order.createdAt
+                    ).toLocaleDateString()}`}
+                    checked={selectedOrders.includes(order.id)}
+                    onChange={(checked) => handleOrderSelectionChange(order.id, checked)}
+                  />
+                  <List>
+                    {order.lineItems.map((item) => (
+                      <List.Item key={item.id}>
+                        {item.name} - Quantity: {item.quantity}
+                      </List.Item>
+                    ))}
+                  </List>
                 </List.Item>
               ))}
             </List>
           </Card>
+        )}
+      </Layout.Section>
+    )}
 
-          {customerOrders.length > 0 && (
-            <Card title="Latest Orders for this Customer">
-              <List>
-                {customerOrders.map((order) => (
-                  <List.Item key={order.id}>
-                    <Checkbox
-                      label={`Order #${order.orderNumber} - ${order.totalPrice} - Placed on: ${new Date(order.createdAt).toLocaleDateString()}`}
-                      checked={selectedOrders.includes(order.id)}
-                      onChange={(checked) => handleOrderSelectionChange(order.id, checked)}
-                    />
-                    <List>
-                      {order.lineItems.map((item) => (
-                        <List.Item key={item.id}>
-                          {item.name} - Quantity: {item.quantity}
-                        </List.Item>
-                      ))}
-                    </List>
-                  </List.Item>
-                ))}
-              </List>
-            </Card>
-          )}
-        </BlockStack>
-      )}
-
-      {combineOrdersVisible && (
+    {combineOrdersVisible && (
+      <Layout.Section>
         <Button fullWidth primary onClick={handleCombineOrders}>
           Combine Orders
         </Button>
-      )}
+      </Layout.Section>
+    )}
 
-      {!isLoading && fetcher.data && fetcher.data.success && (
-        <BlockStack gap="500">
+    {!isLoading && fetcher.data && fetcher.data.success && (
+      <Layout.Section>
+        <Card sectioned>
           <Text>{fetcher.data.message}</Text>
-
           {fetcher.data.completedOrder && (
             <Button
               primary
@@ -1039,7 +1053,6 @@ export default function Index() {
               View New Order #{fetcher.data.completedOrder.name}
             </Button>
           )}
-
           {fetcher.data.preorderCompletedOrder && (
             <Button
               primary
@@ -1051,10 +1064,12 @@ export default function Index() {
               View New Preorder Order #{fetcher.data.preorderCompletedOrder.name}
             </Button>
           )}
-        </BlockStack>
-      )}
+        </Card>
+      </Layout.Section>
+    )}
 
-      {!isViewingOrderDetails && ordersWithTag.length > 0 && (
+    {!isViewingOrderDetails && ordersWithTag.length > 0 && (
+      <Layout.Section>
         <Card title='Orders with tag "combine this"'>
           <List>
             {ordersWithTag.map((order) => (
@@ -1074,7 +1089,26 @@ export default function Index() {
             ))}
           </List>
         </Card>
-      )}
-    </Page>
+      </Layout.Section>
+    )}
+  </Layout>
+
+  <style>
+    {`
+      .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(255, 255, 255, 0.7);
+        z-index: 9999;
+      }
+    `}
+  </style>
+</Page>
   );
 }
