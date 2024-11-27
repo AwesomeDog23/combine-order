@@ -33,7 +33,7 @@ export const action = async ({ request }) => {
       `,
       {
         variables: {
-          id: orderNumber, // Ensure this is the correct global ID of the order
+          id: orderNumber,
         },
       }
     );
@@ -63,7 +63,7 @@ export const action = async ({ request }) => {
       `,
       {
         variables: {
-          id: orderNumber, // Ensure this is the correct global ID of the order
+          id: orderNumber,
           tags: updatedTags,
         },
       }
@@ -117,10 +117,9 @@ export const action = async ({ request }) => {
 
     // Exclude items with names starting with "Free and Easy Returns" or "Exchanges"
     foundOrder.lineItems.edges = foundOrder.lineItems.edges.filter(
-      ({ node }) => 
-        !node.name.startsWith("Free and Easy Returns")
+      ({ node }) => !node.name.startsWith("Free and Easy Returns")
     );
-    
+
     return json({ order: foundOrder });
   } catch (error) {
     return json({ error: error.message });
@@ -134,6 +133,16 @@ export default function OrderLookupPage() {
   const [enteredSkus, setEnteredSkus] = useState([]);
   const [currentSku, setCurrentSku] = useState("");
   const skuInputRef = useRef(null);
+
+  // References for audio elements
+  const successAudio = useRef(null);
+  const errorAudio = useRef(null);
+
+  useEffect(() => {
+    // Initialize audio elements with URLs
+    successAudio.current = new Audio("https://cdn.shopify.com/s/files/1/0956/6372/files/success-sound.mp3?v=1732740093");
+    errorAudio.current = new Audio("https://cdn.shopify.com/s/files/1/0956/6372/files/error-sound.mp3?v=1732740084");
+  }, []);
 
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
@@ -162,19 +171,30 @@ export default function OrderLookupPage() {
     event.preventDefault();
     if (!currentSku || !order) return;
 
-    addSkuToEntered(currentSku);
+    const skuAdded = addSkuToEntered(currentSku);
     setCurrentSku("");
+
+    if (!skuAdded) {
+      // Play error sound
+      errorAudio.current.play().catch((error) => {
+        console.error("Error playing error sound:", error);
+      });
+    }
   };
 
   const addSkuToEntered = (sku) => {
     const itemToUpdate = order.lineItems.edges.find(
       ({ node }) =>
-        node.variant.sku.toLowerCase() === sku.toLowerCase() && // Make comparison case-insensitive
-        enteredSkus.filter((enteredSku) => enteredSku.toLowerCase() === sku.toLowerCase()).length < node.quantity
+        node.variant.sku.toLowerCase() === sku.toLowerCase() &&
+        enteredSkus.filter((enteredSku) => enteredSku.toLowerCase() === sku.toLowerCase()).length <
+          node.quantity
     );
-  
+
     if (itemToUpdate) {
       setEnteredSkus((prev) => [...prev, sku]);
+      return true;
+    } else {
+      return false;
     }
   };
 
@@ -182,31 +202,36 @@ export default function OrderLookupPage() {
     enteredSkus.filter((enteredSku) => enteredSku.toLowerCase() === sku.toLowerCase()).length;
 
   const allSkusEntered = order
-  ? order.lineItems.edges.every(
-      ({ node }) => getEnteredQuantity(node.variant.sku) === node.quantity
-    )
-  : false;
+    ? order.lineItems.edges.every(
+        ({ node }) => getEnteredQuantity(node.variant.sku) === node.quantity
+      )
+    : false;
 
-    const handleCompleteOrder = () => {
-      if (allSkusEntered && order) {
-        const globalId = order.id;
-        const numericId = globalId.split("/").pop();
-        const completionTimestamp = new Date().toISOString();
-    
-        fetcher.submit(
-          { orderNumber: globalId, completionTimestamp },
-          { method: "post" }
-        );
-    
-        window.open(`shopify:admin/orders/${numericId}`, "_blank");
-    
-        // Reset the page states
-        setOrderNumber("");
-        setEnteredSkus([]);
-        setCurrentSku("");
-        fetcher.load("/"); // reloads the page or refetches data
-      }
-    };
+  const handleCompleteOrder = () => {
+    if (allSkusEntered && order) {
+      // Play success sound
+      successAudio.current.play().catch((error) => {
+        console.error("Error playing success sound:", error);
+      });
+
+      const globalId = order.id;
+      const numericId = globalId.split("/").pop();
+      const completionTimestamp = new Date().toISOString();
+
+      fetcher.submit(
+        { orderNumber: globalId, completionTimestamp },
+        { method: "post" }
+      );
+
+      window.open(`shopify:admin/orders/${numericId}`, "_blank");
+
+      // Reset the page states
+      setOrderNumber("");
+      setEnteredSkus([]);
+      setCurrentSku("");
+      fetcher.load("/"); // reloads the page or refetches data
+    }
+  };
 
   // Automatically complete order once all SKUs are entered
   useEffect(() => {
@@ -259,41 +284,39 @@ export default function OrderLookupPage() {
           </Layout.Section>
         )}
 
-{order && (
-  <Layout.Section>
-    <Card title={`Order #${order.name}`} sectioned>
-      <List>
-        {order.lineItems.edges
-          .filter(({ node }) => 
-            !node.name.startsWith("Free and Easy Returns")
-          )
-          .map(({ node }) => {
-            const enteredQuantity = getEnteredQuantity(node.variant.sku);
-            const isComplete = enteredQuantity >= node.quantity;
-            return (
-              <List.Item
-                key={node.id}
-                style={{
-                  backgroundColor: isComplete ? "lightgreen" : "transparent",
-                  padding: "10px",
-                  borderRadius: "5px",
-                  marginBottom: "5px",
-                }}
-              >
-                <Text>
-                  {node.name} - SKU: {node.variant.sku} - Quantity:{" "}
-                  {enteredQuantity}/{node.quantity}
-                </Text>
-                <Button onClick={() => addSkuToEntered(node.variant.sku)}>
-                  Mark as packed
-                </Button>
-              </List.Item>
-            );
-          })}
-      </List>
-    </Card>
-  </Layout.Section>
-)}
+        {order && (
+          <Layout.Section>
+            <Card title={`Order #${order.name}`} sectioned>
+              <List>
+                {order.lineItems.edges
+                  .filter(({ node }) => !node.name.startsWith("Free and Easy Returns"))
+                  .map(({ node }) => {
+                    const enteredQuantity = getEnteredQuantity(node.variant.sku);
+                    const isComplete = enteredQuantity >= node.quantity;
+                    return (
+                      <List.Item
+                        key={node.id}
+                        style={{
+                          backgroundColor: isComplete ? "lightgreen" : "transparent",
+                          padding: "10px",
+                          borderRadius: "5px",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        <Text>
+                          {node.name} - SKU: {node.variant.sku} - Quantity:{" "}
+                          {enteredQuantity}/{node.quantity}
+                        </Text>
+                        <Button onClick={() => addSkuToEntered(node.variant.sku)}>
+                          Mark as packed
+                        </Button>
+                      </List.Item>
+                    );
+                  })}
+              </List>
+            </Card>
+          </Layout.Section>
+        )}
       </Layout>
     </Page>
   );
