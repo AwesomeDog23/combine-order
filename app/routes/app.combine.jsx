@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { json } from "@remix-run/node";
 import { useFetcher, useLoaderData } from "@remix-run/react";
@@ -12,7 +11,9 @@ import {
   List,
   TextField,
   Spinner,
-  Checkbox, // Added Checkbox import
+  Checkbox,
+  Modal,
+  RadioButton,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -105,17 +106,23 @@ export const action = async ({ request }) => {
   const orderNumber = formData.get("orderNumber");
   const combineOrders = formData.get("combineOrders") === "true";
   const disableAddressCheck = formData.get("disableAddressCheck") === "true";
-  const ignorePreorderSeparation = formData.get("ignorePreorderSeparation") === "true"; // New line
+  const ignorePreorderSeparation = formData.get("ignorePreorderSeparation") === "true";
 
-  // Get selectedOrders from formData
   const selectedOrders = JSON.parse(formData.get("selectedOrders") || "[]");
+
+  const proceedDespiteAddressMismatch = formData.get("proceedDespiteAddressMismatch") === "true";
+  const selectedAddressData = formData.get("selectedAddress");
+  let selectedAddress = null;
+  if (selectedAddressData) {
+    selectedAddress = JSON.parse(selectedAddressData);
+  }
 
   // Helper function to normalize address for comparison (case-insensitive) and include the customer's name
   const normalizeAddress = (address, customer) => {
     if (!address) return null;
     return {
-      firstName: customer?.firstName || '', // Add customer's first name
-      lastName: customer?.lastName || '',   // Add customer's last name
+      firstName: customer?.firstName || '',
+      lastName: customer?.lastName || '',
       address1: address.address1?.toLowerCase().trim(),
       address2: address.address2?.toLowerCase().trim(),
       city: address.city?.toLowerCase().trim(),
@@ -185,7 +192,7 @@ export const action = async ({ request }) => {
       { variables: { query: `name:${orderNumber}` } }
     );
 
-    const orderData = await orderResponse.json(); // Parse the JSON data
+    const orderData = await orderResponse.json();
 
     if (!orderData.data.orders.edges.length) {
       return json({ error: "Order not found" });
@@ -193,7 +200,7 @@ export const action = async ({ request }) => {
 
     const foundOrder = orderData.data.orders.edges[0].node;
     const customerId = foundOrder.customer.id;
-    const shippingAddress = foundOrder.shippingAddress; // Capture the shipping address
+    const shippingAddress = foundOrder.shippingAddress;
     const customerInfo = { firstName: foundOrder.customer.firstName, lastName: foundOrder.customer.lastName };
 
     // Normalize the shipping address of the found order for comparison, including the customer name
@@ -241,7 +248,7 @@ export const action = async ({ request }) => {
       { variables: { query: `status:open AND fulfillment_status:unfulfilled AND customer_id:${numericCustomerId}` } }
     );
 
-    const customerOrdersData = await customerOrdersResponse.json(); // Parse the JSON data
+    const customerOrdersData = await customerOrdersResponse.json();
 
     let customerOrders = customerOrdersData.data.orders.edges.map((edge) => ({
       id: edge.node.id,
@@ -252,9 +259,9 @@ export const action = async ({ request }) => {
         id: itemEdge.node.id,
         name: itemEdge.node.name,
         quantity: itemEdge.node.quantity,
-        variantId: itemEdge.node.variant?.id, // Use optional chaining
+        variantId: itemEdge.node.variant?.id,
       })),
-      shippingAddress: normalizeAddress(edge.node.shippingAddress, customerInfo), // Normalize shipping address for comparison
+      shippingAddress: normalizeAddress(edge.node.shippingAddress, customerInfo),
     }));
 
     // If selectedOrders is provided, filter customerOrders
@@ -263,15 +270,26 @@ export const action = async ({ request }) => {
     }
 
     if (combineOrders && customerOrders.length > 0) {
-      if (!disableAddressCheck) {
+      if (!disableAddressCheck && !proceedDespiteAddressMismatch) {
+        const mismatchedAddresses = [];
         for (const order of customerOrders) {
           if (!addressesMatch(normalizedOriginalAddress, order.shippingAddress)) {
-            throw new Error(
-              `The shipping address for order ${order.orderNumber} does not match the original order's shipping address. All orders must have the same shipping address to be combined.`
-            );
+            mismatchedAddresses.push({
+              orderNumber: order.orderNumber,
+              address: order.shippingAddress,
+            });
           }
         }
+        if (mismatchedAddresses.length > 0) {
+          return json({
+            addressesMismatch: true,
+            mismatchedAddresses,
+            originalAddress: normalizedOriginalAddress,
+          });
+        }
       }
+
+      const shippingAddressToUse = selectedAddress || shippingAddress;
 
       if (ignorePreorderSeparation) {
         // Combine all items into a single variantQuantityMap
@@ -475,347 +493,344 @@ export const action = async ({ request }) => {
           completedOrder: newOrder,
         });
       } else {
-      // Aggregate quantities for duplicate variants, separating 'PREORDER' items
-      const variantQuantityMap = {}; // For regular items
-      const preorderVariantQuantityMap = {}; // For 'PREORDER' items
-      const freeAndEasyRegularVariantIds = new Set(); // For "Free and Easy Returns or Exchanges" items in regular items
-      const freeAndEasyPreorderVariantIds = new Set(); // For "Free and Easy Returns or Exchanges" items in preorder items
+        // Combine items, separating 'PREORDER' items
+        const variantQuantityMap = {}; // For regular items
+        const preorderVariantQuantityMap = {}; // For 'PREORDER' items
+        const freeAndEasyRegularVariantIds = new Set(); // For "Free and Easy Returns or Exchanges" items in regular items
+        const freeAndEasyPreorderVariantIds = new Set(); // For "Free and Easy Returns or Exchanges" items in preorder items
 
-      // Variables to store the first order numbers
-      let regularOrderNumber = null;
-      let preorderOrderNumber = null;
+        // Variables to store the first order numbers
+        let regularOrderNumber = null;
+        let preorderOrderNumber = null;
 
-      customerOrders.forEach((order) => {
-        order.lineItems.forEach((item) => {
-          if (item.variantId) {
-            const isPreorder = item.name.includes('PREORDER');
-            const isFreeAndEasy = item.name.startsWith('Free and Easy Returns or Exchanges');
+        customerOrders.forEach((order) => {
+          order.lineItems.forEach((item) => {
+            if (item.variantId) {
+              const isPreorder = item.name.includes('PREORDER');
+              const isFreeAndEasy = item.name.startsWith('Free and Easy Returns or Exchanges');
 
-            if (isFreeAndEasy) {
-              if (isPreorder) {
-                freeAndEasyPreorderVariantIds.add(item.variantId);
-                if (!preorderOrderNumber) {
-                  preorderOrderNumber = order.orderNumber + "-C";
+              if (isFreeAndEasy) {
+                if (isPreorder) {
+                  freeAndEasyPreorderVariantIds.add(item.variantId);
+                  if (!preorderOrderNumber) {
+                    preorderOrderNumber = order.orderNumber + "-C";
+                  }
+                } else {
+                  freeAndEasyRegularVariantIds.add(item.variantId);
+                  if (!regularOrderNumber) {
+                    regularOrderNumber = order.orderNumber + "-C";
+                  }
                 }
               } else {
-                freeAndEasyRegularVariantIds.add(item.variantId);
-                if (!regularOrderNumber) {
+                const map = isPreorder ? preorderVariantQuantityMap : variantQuantityMap;
+                if (map[item.variantId]) {
+                  map[item.variantId] += item.quantity;
+                } else {
+                  map[item.variantId] = item.quantity;
+                }
+                if (isPreorder && !preorderOrderNumber) {
+                  preorderOrderNumber = order.orderNumber + "-C";
+                } else if (!isPreorder && !regularOrderNumber) {
                   regularOrderNumber = order.orderNumber + "-C";
                 }
               }
-            } else {
-              const map = isPreorder ? preorderVariantQuantityMap : variantQuantityMap;
-              if (map[item.variantId]) {
-                map[item.variantId] += item.quantity;
-              } else {
-                map[item.variantId] = item.quantity;
-              }
-              if (isPreorder && !preorderOrderNumber) {
-                preorderOrderNumber = order.orderNumber + "-C";
-              } else if (!isPreorder && !regularOrderNumber) {
-                regularOrderNumber = order.orderNumber + "-C";
-              }
             }
-          }
-        });
-      });
-
-      const combinedLineItems = Object.keys(variantQuantityMap).map((variantId) => ({
-        variantId,
-        quantity: variantQuantityMap[variantId],
-      }));
-
-      const preorderLineItems = Object.keys(preorderVariantQuantityMap).map((variantId) => ({
-        variantId,
-        quantity: preorderVariantQuantityMap[variantId],
-      }));
-
-      // Include 'Free and Easy Returns or Exchanges' items with quantity 1
-      if (combinedLineItems.length > 0) {
-        freeAndEasyRegularVariantIds.forEach((variantId) => {
-          combinedLineItems.push({
-            variantId,
-            quantity: 1,
           });
         });
-      }
-      if (preorderLineItems.length > 0) {
-        freeAndEasyPreorderVariantIds.forEach((variantId) => {
-          preorderLineItems.push({
-            variantId,
-            quantity: 1,
+
+        const combinedLineItems = Object.keys(variantQuantityMap).map((variantId) => ({
+          variantId,
+          quantity: variantQuantityMap[variantId],
+        }));
+
+        const preorderLineItems = Object.keys(preorderVariantQuantityMap).map((variantId) => ({
+          variantId,
+          quantity: preorderVariantQuantityMap[variantId],
+        }));
+
+        // Include 'Free and Easy Returns or Exchanges' items with quantity 1
+        if (combinedLineItems.length > 0) {
+          freeAndEasyRegularVariantIds.forEach((variantId) => {
+            combinedLineItems.push({
+              variantId,
+              quantity: 1,
+            });
           });
+        }
+        if (preorderLineItems.length > 0) {
+          freeAndEasyPreorderVariantIds.forEach((variantId) => {
+            preorderLineItems.push({
+              variantId,
+              quantity: 1,
+            });
+          });
+        }
+
+        let newRegularOrder = null; // Initialize as null
+        let newPreorderOrder = null; // Initialize as null
+
+        // Create new regular order if there are regular line items
+        if (combinedLineItems.length > 0) {
+          const lineItems = combinedLineItems.map(item => ({
+            variantId: item.variantId,
+            quantity: item.quantity,
+            requiresShipping: true,
+            priceSet: {
+              shopMoney: {
+                amount: "0.00",
+                currencyCode: "USD",
+              }
+            },
+          }));
+
+          const regularOrderCreateResponse = await admin.graphql(
+            `#graphql
+            mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+              orderCreate(order: $order, options: $options) {
+                order {
+                  id
+                  name
+                  requiresShipping
+                  totalTaxSet {
+                    shopMoney {
+                      amount
+                      currencyCode
+                    }
+                  }
+                  lineItems(first: 5) {
+                    nodes {
+                      variant {
+                        id
+                      }
+                      id
+                      title
+                      quantity
+                    }
+                  }
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+            {
+              variables: {
+                order: {
+                  name: regularOrderNumber,
+                  lineItems,
+                  customerId,
+                  shippingAddress: {
+                    firstName: customerInfo.firstName,
+                    lastName: customerInfo.lastName,
+                    address1: shippingAddressToUse.address1,
+                    address2: shippingAddressToUse.address2,
+                    city: shippingAddressToUse.city,
+                    country: shippingAddressToUse.country,
+                    province: shippingAddressToUse.province,
+                    zip: shippingAddressToUse.zip,
+                  },
+                  billingAddress: {
+                    firstName: customerInfo.firstName,
+                    lastName: customerInfo.lastName,
+                    address1: shippingAddressToUse.address1,
+                    address2: shippingAddressToUse.address2,
+                    city: shippingAddressToUse.city,
+                    country: shippingAddressToUse.country,
+                    province: shippingAddressToUse.province,
+                    zip: shippingAddressToUse.zip,
+                  },
+                  shippingLines: [
+                    {
+                      title: "Standard Shipping",
+                      priceSet: {
+                        shopMoney: {
+                          amount: "0.00",
+                          currencyCode: "USD",
+                        },
+                      },
+                      code: "standard",
+                      source: "Custom",
+                    },
+                  ],
+                  financialStatus: "PAID",
+                  tags: [`Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`],
+                },
+                options: {
+                  inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
+                  sendReceipt: true,
+                },
+              },
+            }
+          );
+
+          const regularOrderCreateData = await regularOrderCreateResponse.json();
+
+          if (regularOrderCreateData.data.orderCreate.userErrors.length) {
+            throw new Error(
+              regularOrderCreateData.data.orderCreate.userErrors
+                .map((e) => e.message)
+                .join(", ")
+            );
+          }
+
+          newRegularOrder = regularOrderCreateData.data.orderCreate.order;
+        }
+
+        // Create new preorder order if there are preorder line items
+        if (preorderLineItems.length > 0) {
+          const lineItems = preorderLineItems.map(item => ({
+            variantId: item.variantId,
+            quantity: item.quantity,
+            requiresShipping: true,
+            priceSet: {
+              shopMoney: {
+                amount: "0.00",
+                currencyCode: "USD",
+              }
+            },
+          }));
+
+          const preorderOrderCreateResponse = await admin.graphql(
+            `#graphql
+            mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+              orderCreate(order: $order, options: $options) {
+                order {
+                  id
+                  name
+                  requiresShipping
+                  totalTaxSet {
+                    shopMoney {
+                      amount
+                      currencyCode
+                    }
+                  }
+                  lineItems(first: 5) {
+                    nodes {
+                      variant {
+                        id
+                      }
+                      id
+                      title
+                      quantity
+                    }
+                  }
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+            {
+              variables: {
+                order: {
+                  name: preorderOrderNumber,
+                  lineItems,
+                  customerId,
+                  shippingAddress: {
+                    firstName: customerInfo.firstName,
+                    lastName: customerInfo.lastName,
+                    address1: shippingAddressToUse.address1,
+                    address2: shippingAddressToUse.address2,
+                    city: shippingAddressToUse.city,
+                    country: shippingAddressToUse.country,
+                    province: shippingAddressToUse.province,
+                    zip: shippingAddressToUse.zip,
+                  },
+                  billingAddress: {
+                    firstName: customerInfo.firstName,
+                    lastName: customerInfo.lastName,
+                    address1: shippingAddressToUse.address1,
+                    address2: shippingAddressToUse.address2,
+                    city: shippingAddressToUse.city,
+                    country: shippingAddressToUse.country,
+                    province: shippingAddressToUse.province,
+                    zip: shippingAddressToUse.zip,
+                  },
+                  shippingLines: [
+                    {
+                      title: "Standard Shipping",
+                      priceSet: {
+                        shopMoney: {
+                          amount: "0.00",
+                          currencyCode: "USD",
+                        },
+                      },
+                      code: "standard",
+                      source: "Custom",
+                    },
+                  ],
+                  financialStatus: "PAID",
+                  tags: [`Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`],
+                },
+                options: {
+                  inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
+                  sendReceipt: true,
+                },
+              },
+            }
+          );
+
+          const preorderOrderCreateData = await preorderOrderCreateResponse.json();
+
+          if (preorderOrderCreateData.data.orderCreate.userErrors.length) {
+            throw new Error(
+              preorderOrderCreateData.data.orderCreate.userErrors
+                .map((e) => e.message)
+                .join(", ")
+            );
+          }
+
+          newPreorderOrder = preorderOrderCreateData.data.orderCreate.order;
+        }
+
+        // Cancel original orders
+        for (const order of customerOrders) {
+          const orderCancelResponse = await admin.graphql(
+            `#graphql
+            mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
+              orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
+                job {
+                  id
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+            {
+              variables: {
+                orderId: order.id,
+                reason: "OTHER",
+                refund: false,
+                restock: true,
+                staffnote: 'Order combined with other orders',
+              },
+            }
+          );
+
+          const cancelOrderData = await orderCancelResponse.json();
+
+          if (cancelOrderData.data.orderCancel.userErrors.length) {
+            throw new Error(
+              cancelOrderData.data.orderCancel.userErrors
+                .map((e) => e.message)
+                .join(", ")
+            );
+          }
+        }
+
+        return json({
+          success: true,
+          message: "New combined orders created, and original orders canceled successfully",
+          completedOrder: newRegularOrder,
+          preorderCompletedOrder: newPreorderOrder,
         });
-      }
-
-      console.log("Combined Line Items:", combinedLineItems);
-      console.log("Preorder Line Items:", preorderLineItems);
-
-      let newRegularOrder = null; // Initialize as null
-      let newPreorderOrder = null; // Initialize as null
-
-      // Create new regular order if there are regular line items
-      if (combinedLineItems.length > 0) {
-        const lineItems = combinedLineItems.map(item => ({
-          variantId: item.variantId,
-          quantity: item.quantity,
-          requiresShipping: true,
-          priceSet: {
-            shopMoney: {
-              amount: "0.00",
-              currencyCode: "USD",
-            }
-          },
-        }));
-
-        const regularOrderCreateResponse = await admin.graphql(
-          `#graphql
-          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-            orderCreate(order: $order, options: $options) {
-              order {
-                id
-                name
-                requiresShipping
-                totalTaxSet {
-                  shopMoney {
-                    amount
-                    currencyCode
-                  }
-                }
-                lineItems(first: 5) {
-                  nodes {
-                    variant {
-                      id
-                    }
-                    id
-                    title
-                    quantity
-                  }
-                }
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-          {
-            variables: {
-              order: {
-                name: regularOrderNumber, // Set the name to the first original order's order number
-                lineItems,
-                customerId,
-                shippingAddress: {
-                  firstName: customerInfo.firstName, // Include customer's first name
-                  lastName: customerInfo.lastName,   // Include customer's last name
-                  address1: shippingAddress.address1,
-                  address2: shippingAddress.address2,
-                  city: shippingAddress.city,
-                  country: shippingAddress.country,
-                  province: shippingAddress.province,
-                  zip: shippingAddress.zip,
-                },
-                billingAddress: {
-                  firstName: customerInfo.firstName, // Include customer's first name
-                  lastName: customerInfo.lastName,   // Include customer's last name
-                  address1: shippingAddress.address1,
-                  address2: shippingAddress.address2,
-                  city: shippingAddress.city,
-                  country: shippingAddress.country,
-                  province: shippingAddress.province,
-                  zip: shippingAddress.zip,
-                },
-                shippingLines: [
-                  {
-                    title: "Standard Shipping",
-                    priceSet: {
-                      shopMoney: {
-                        amount: "0.00", // The shipping cost as a string
-                        currencyCode: "USD", // The currency code
-                      },
-                    },
-                    code: "standard",
-                    source: "Custom",
-                  },
-                ],
-                financialStatus: "PAID",
-                tags: [`Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`],
-              },
-              options: {
-                inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
-                sendReceipt: true,
-              },
-            },
-          }
-        );
-
-        const regularOrderCreateData = await regularOrderCreateResponse.json();
-
-        if (regularOrderCreateData.data.orderCreate.userErrors.length) {
-          throw new Error(
-            regularOrderCreateData.data.orderCreate.userErrors
-              .map((e) => e.message)
-              .join(", ")
-          );
-        }
-
-        newRegularOrder = regularOrderCreateData.data.orderCreate.order;
-      }
-
-      // Create new preorder order if there are preorder line items
-      if (preorderLineItems.length > 0) {
-        const lineItems = preorderLineItems.map(item => ({
-          variantId: item.variantId,
-          quantity: item.quantity,
-          requiresShipping: true,
-          priceSet: {
-            shopMoney: {
-              amount: "0.00",
-              currencyCode: "USD",
-            }
-          },
-        }));
-
-        const preorderOrderCreateResponse = await admin.graphql(
-          `#graphql
-          mutation OrderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-            orderCreate(order: $order, options: $options) {
-              order {
-                id
-                name
-                requiresShipping
-                totalTaxSet {
-                  shopMoney {
-                    amount
-                    currencyCode
-                  }
-                }
-                lineItems(first: 5) {
-                  nodes {
-                    variant {
-                      id
-                    }
-                    id
-                    title
-                    quantity
-                  }
-                }
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-          {
-            variables: {
-              order: {
-                name: preorderOrderNumber, // Set the name to the second original order's order number
-                lineItems,
-                customerId,
-                shippingAddress: {
-                  firstName: customerInfo.firstName, // Include customer's first name
-                  lastName: customerInfo.lastName,   // Include customer's last name
-                  address1: shippingAddress.address1,
-                  address2: shippingAddress.address2,
-                  city: shippingAddress.city,
-                  country: shippingAddress.country,
-                  province: shippingAddress.province,
-                  zip: shippingAddress.zip,
-                },
-                billingAddress: {
-                  firstName: customerInfo.firstName, // Include customer's first name
-                  lastName: customerInfo.lastName,   // Include customer's last name
-                  address1: shippingAddress.address1,
-                  address2: shippingAddress.address2,
-                  city: shippingAddress.city,
-                  country: shippingAddress.country,
-                  province: shippingAddress.province,
-                  zip: shippingAddress.zip,
-                },
-                shippingLines: [
-                  {
-                    title: "Standard Shipping",
-                    priceSet: {
-                      shopMoney: {
-                        amount: "0.00", // The shipping cost as a string
-                        currencyCode: "USD", // The currency code
-                      },
-                    },
-                    code: "standard",
-                    source: "Custom",
-                  },
-                ],
-                financialStatus: "PAID",
-                tags: [`Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`],
-              },
-              options: {
-                inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
-                sendReceipt: true,
-              },
-            },
-          }
-        );
-
-        const preorderOrderCreateData = await preorderOrderCreateResponse.json();
-
-        if (preorderOrderCreateData.data.orderCreate.userErrors.length) {
-          throw new Error(
-            preorderOrderCreateData.data.orderCreate.userErrors
-              .map((e) => e.message)
-              .join(", ")
-          );
-        }
-
-        newPreorderOrder = preorderOrderCreateData.data.orderCreate.order;
-      }
-
-      // Cancel original orders
-      for (const order of customerOrders) {
-        const orderCancelResponse = await admin.graphql(
-          `#graphql
-          mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
-            orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
-              job {
-                id
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-          {
-            variables: {
-              orderId: order.id,
-              reason: "OTHER",
-              refund: false,
-              restock: true,
-              staffnote: 'Order combined with other orders',
-            },
-          }
-        );
-
-        const cancelOrderData = await orderCancelResponse.json();
-
-        if (cancelOrderData.data.orderCancel.userErrors.length) {
-          throw new Error(
-            cancelOrderData.data.orderCancel.userErrors
-              .map((e) => e.message)
-              .join(", ")
-          );
-        }
-      }
-
-      return json({
-        success: true,
-        message: "New combined orders created, and original orders canceled successfully",
-        completedOrder: newRegularOrder,
-        preorderCompletedOrder: newPreorderOrder,
-      });
       }
     }
 
@@ -846,13 +861,16 @@ export default function Index() {
   const [combineOrdersVisible, setCombineOrdersVisible] = useState(false);
   const [selectedOrders, setSelectedOrders] = useState([]);
   const [ordersWithTag, setOrdersWithTag] = useState(data?.ordersWithTag || []);
-  const [pageCursor, setPageCursor] = useState(null);
-  const [hasNextPage, setHasNextPage] = useState(data?.pageInfo?.hasNextPage);
-  const [hasPreviousPage, setHasPreviousPage] = useState(data?.pageInfo?.hasPreviousPage);
   const [disableAddressCheck, setDisableAddressCheck] = useState(false);
-  const [ignorePreorderSeparation, setIgnorePreorderSeparation] = useState(false); // New line
+  const [ignorePreorderSeparation, setIgnorePreorderSeparation] = useState(false);
   const [isViewingOrderDetails, setIsViewingOrderDetails] = useState(false);
   const [unfulfilledOrder, setUnfulfilledOrder] = useState(null);
+
+  const [showAddressMismatchModal, setShowAddressMismatchModal] = useState(false);
+  const [mismatchedAddresses, setMismatchedAddresses] = useState([]);
+  const [originalAddress, setOriginalAddress] = useState(null);
+  const [selectedAddress, setSelectedAddress] = useState(null);
+  const [selectedAddressId, setSelectedAddressId] = useState('original');
 
   const isLoading = ["loading", "submitting"].includes(fetcher.state) && fetcher.formMethod === "POST";
   const error = data?.error || fetcher.data?.error;
@@ -878,7 +896,7 @@ export default function Index() {
         combineOrders: "true",
         selectedOrders: JSON.stringify(selectedOrders),
         disableAddressCheck: disableAddressCheck.toString(),
-        ignorePreorderSeparation: ignorePreorderSeparation.toString(), // New line
+        ignorePreorderSeparation: ignorePreorderSeparation.toString(),
       },
       { method: "POST" }
     );
@@ -890,8 +908,9 @@ export default function Index() {
     setCombineOrdersVisible(false);
     setSelectedOrders([]);
     setDisableAddressCheck(false);
-    setIgnorePreorderSeparation(false); // Reset the new state
+    setIgnorePreorderSeparation(false);
     setUnfulfilledOrder(null);
+    setShowAddressMismatchModal(false);
     fetcher.load('/'); // Reload the loader data
   };
 
@@ -904,12 +923,17 @@ export default function Index() {
 
     if (fetcher.data && fetcher.data.ordersWithTag) {
       setOrdersWithTag(fetcher.data.ordersWithTag || []);
-      setPageCursor(fetcher.data.pageInfo?.endCursor || null);
-      setHasNextPage(fetcher.data.pageInfo?.hasNextPage || false);
-      setHasPreviousPage(fetcher.data.pageInfo?.hasPreviousPage || false);
     } else if (!isViewingOrderDetails) {
       // Reset to initial data when not viewing order details
       setOrdersWithTag(data.ordersWithTag || []);
+    }
+
+    if (fetcher.data && fetcher.data.addressesMismatch) {
+      setShowAddressMismatchModal(true);
+      setMismatchedAddresses(fetcher.data.mismatchedAddresses || []);
+      setOriginalAddress(fetcher.data.originalAddress || null);
+      setSelectedAddress(fetcher.data.originalAddress || null);
+      setSelectedAddressId('original');
     }
   }, [fetcher.data, isViewingOrderDetails, data.ordersWithTag]);
 
@@ -940,175 +964,241 @@ export default function Index() {
     }
   };
 
+  const renderAddress = (address) => {
+    if (!address) return '';
+    return `${address.firstName} ${address.lastName}, ${address.address1}${address.address2 ? ', ' + address.address2 : ''}, ${address.city}, ${address.province}, ${address.country}, ${address.zip}`;
+  };
+
+  const handleProceedDespiteAddressMismatch = () => {
+    fetcher.submit(
+      {
+        orderNumber,
+        combineOrders: "true",
+        selectedOrders: JSON.stringify(selectedOrders),
+        disableAddressCheck: disableAddressCheck.toString(),
+        proceedDespiteAddressMismatch: "true",
+        selectedAddress: JSON.stringify(selectedAddress),
+        ignorePreorderSeparation: ignorePreorderSeparation.toString(),
+      },
+      { method: "POST" }
+    );
+    setShowAddressMismatchModal(false);
+  };
+
   return (
-<Page>
-  <TitleBar title="Combine Orders" />
+    <Page>
+      <TitleBar title="Combine Orders" />
 
-  <Layout>
-    <Layout.Section>
-      <Card sectioned title="Search Orders">
-        <form onSubmit={handleSubmit}>
-          <BlockStack spacing="tight">
-            <TextField
-              label="Order Number"
-              value={orderNumber}
-              onChange={handleInputChange}
-              placeholder="Enter Order Number"
-            />
-            <Checkbox
-              label="Disable address verification"
-              checked={disableAddressCheck}
-              onChange={(newChecked) => setDisableAddressCheck(newChecked)}
-            />
-            <Checkbox
-              label="Ignore preorder separation"
-              checked={ignorePreorderSeparation}
-              onChange={(newChecked) => setIgnorePreorderSeparation(newChecked)}
-            />
-            <Button primary submit>
-              Search Orders
-            </Button>
-          </BlockStack>
-        </form>
-      </Card>
-    </Layout.Section>
-
-    {isLoading && (
-      <div className="loading-overlay">
-        <Spinner accessibilityLabel="Loading orders" size="large" />
-      </div>
-    )}
-
-    {error && (
-      <Layout.Section>
-        <Card sectioned>
-          <Text color="critical">{error}</Text>
-        </Card>
-      </Layout.Section>
-    )}
-
-    {!isLoading && isViewingOrderDetails && unfulfilledOrder && (
-      <Layout.Section>
-        <Button onClick={handleBack}>Back to Order List</Button>
-        <Card sectioned title={`Unfulfilled Items for Order #${unfulfilledOrder.orderNumber}`}>
-          <Text>
-            Total Price: {unfulfilledOrder.totalPrice}
-          </Text>
-          <List>
-            {unfulfilledOrder.unfulfilledItems.map((item) => (
-              <List.Item key={item.id}>
-                {item.name} - Quantity: {item.quantity}
-              </List.Item>
-            ))}
-          </List>
-        </Card>
-
-        {customerOrders.length > 0 && (
-          <Card title="Latest Orders for this Customer">
-            <List>
-              {customerOrders.map((order) => (
-                <List.Item key={order.id}>
-                  <Checkbox
-                    label={`Order #${order.orderNumber} - ${order.totalPrice} - Placed on: ${new Date(
-                      order.createdAt
-                    ).toLocaleDateString()}`}
-                    checked={selectedOrders.includes(order.id)}
-                    onChange={(checked) => handleOrderSelectionChange(order.id, checked)}
-                  />
-                  <List>
-                    {order.lineItems.map((item) => (
-                      <List.Item key={item.id}>
-                        {item.name} - Quantity: {item.quantity}
-                      </List.Item>
-                    ))}
-                  </List>
-                </List.Item>
-              ))}
-            </List>
+      <Layout>
+        <Layout.Section>
+          <Card sectioned title="Search Orders">
+            <form onSubmit={handleSubmit}>
+              <BlockStack spacing="tight">
+                <TextField
+                  label="Order Number"
+                  value={orderNumber}
+                  onChange={handleInputChange}
+                  placeholder="Enter Order Number"
+                />
+                <Checkbox
+                  label="Disable address verification"
+                  checked={disableAddressCheck}
+                  onChange={(newChecked) => setDisableAddressCheck(newChecked)}
+                />
+                <Checkbox
+                  label="Ignore preorder separation"
+                  checked={ignorePreorderSeparation}
+                  onChange={(newChecked) => setIgnorePreorderSeparation(newChecked)}
+                />
+                <Button primary submit>
+                  Search Orders
+                </Button>
+              </BlockStack>
+            </form>
           </Card>
+        </Layout.Section>
+
+        {isLoading && (
+          <div className="loading-overlay">
+            <Spinner accessibilityLabel="Loading orders" size="large" />
+          </div>
         )}
-      </Layout.Section>
-    )}
 
-    {combineOrdersVisible && (
-      <Layout.Section>
-        <Button fullWidth primary onClick={handleCombineOrders}>
-          Combine Orders
-        </Button>
-      </Layout.Section>
-    )}
+        {error && (
+          <Layout.Section>
+            <Card sectioned>
+              <Text color="critical">{error}</Text>
+            </Card>
+          </Layout.Section>
+        )}
 
-    {!isLoading && fetcher.data && fetcher.data.success && (
-      <Layout.Section>
-        <Card sectioned>
-          <Text>{fetcher.data.message}</Text>
-          {fetcher.data.completedOrder && (
-            <Button
-              primary
-              onClick={() => {
-                const orderId = fetcher.data.completedOrder.id.split("/").pop();
-                window.open(`shopify:/admin/orders/${orderId}`, "_blank");
-              }}
-            >
-              View New Order #{fetcher.data.completedOrder.name}
+        {!isLoading && isViewingOrderDetails && unfulfilledOrder && (
+          <Layout.Section>
+            <Button onClick={handleBack}>Back to Order List</Button>
+            <Card sectioned title={`Unfulfilled Items for Order #${unfulfilledOrder.orderNumber}`}>
+              <Text>
+                Total Price: {unfulfilledOrder.totalPrice}
+              </Text>
+              <List>
+                {unfulfilledOrder.unfulfilledItems.map((item) => (
+                  <List.Item key={item.id}>
+                    {item.name} - Quantity: {item.quantity}
+                  </List.Item>
+                ))}
+              </List>
+            </Card>
+
+            {customerOrders.length > 0 && (
+              <Card title="Latest Orders for this Customer">
+                <List>
+                  {customerOrders.map((order) => (
+                    <List.Item key={order.id}>
+                      <Checkbox
+                        label={`Order #${order.orderNumber} - ${order.totalPrice} - Placed on: ${new Date(
+                          order.createdAt
+                        ).toLocaleDateString()}`}
+                        checked={selectedOrders.includes(order.id)}
+                        onChange={(checked) => handleOrderSelectionChange(order.id, checked)}
+                      />
+                      <List>
+                        {order.lineItems.map((item) => (
+                          <List.Item key={item.id}>
+                            {item.name} - Quantity: {item.quantity}
+                          </List.Item>
+                        ))}
+                      </List>
+                    </List.Item>
+                  ))}
+                </List>
+              </Card>
+            )}
+          </Layout.Section>
+        )}
+
+        {combineOrdersVisible && (
+          <Layout.Section>
+            <Button fullWidth primary onClick={handleCombineOrders}>
+              Combine Orders
             </Button>
-          )}
-          {fetcher.data.preorderCompletedOrder && (
-            <Button
-              primary
-              onClick={() => {
-                const preorderOrderId = fetcher.data.preorderCompletedOrder.id.split("/").pop();
-                window.open(`shopify:/admin/orders/${preorderOrderId}`, "_blank");
-              }}
-            >
-              View New Preorder Order #{fetcher.data.preorderCompletedOrder.name}
-            </Button>
-          )}
-        </Card>
-      </Layout.Section>
-    )}
+          </Layout.Section>
+        )}
 
-    {!isViewingOrderDetails && ordersWithTag.length > 0 && (
-      <Layout.Section>
-        <Card title='Orders with tag "combine this"'>
-          <List>
-            {ordersWithTag.map((order) => (
-              <List.Item key={order.id}>
-                Order #{order.name} - {order.totalPrice} - Placed on:{" "}
-                {new Date(order.createdAt).toLocaleDateString()}
+        {!isLoading && fetcher.data && fetcher.data.success && (
+          <Layout.Section>
+            <Card sectioned>
+              <Text>{fetcher.data.message}</Text>
+              {fetcher.data.completedOrder && (
                 <Button
+                  primary
                   onClick={() => {
-                    setIsViewingOrderDetails(true);
-                    setOrderNumber(order.name);
-                    fetcher.submit({ orderNumber: order.name }, { method: "POST" });
+                    const orderId = fetcher.data.completedOrder.id.split("/").pop();
+                    window.open(`shopify:/admin/orders/${orderId}`, "_blank");
                   }}
                 >
-                  View Order
+                  View New Order #{fetcher.data.completedOrder.name}
                 </Button>
-              </List.Item>
-            ))}
-          </List>
-        </Card>
-      </Layout.Section>
-    )}
-  </Layout>
+              )}
+              {fetcher.data.preorderCompletedOrder && (
+                <Button
+                  primary
+                  onClick={() => {
+                    const preorderOrderId = fetcher.data.preorderCompletedOrder.id.split("/").pop();
+                    window.open(`shopify:/admin/orders/${preorderOrderId}`, "_blank");
+                  }}
+                >
+                  View New Preorder Order #{fetcher.data.preorderCompletedOrder.name}
+                </Button>
+              )}
+            </Card>
+          </Layout.Section>
+        )}
 
-  <style>
-    {`
-      .loading-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background-color: rgba(255, 255, 255, 0.7);
-        z-index: 9999;
-      }
-    `}
-  </style>
-</Page>
+        {!isViewingOrderDetails && ordersWithTag.length > 0 && (
+          <Layout.Section>
+            <Card title='Orders with tag "combine this"'>
+              <List>
+                {ordersWithTag.map((order) => (
+                  <List.Item key={order.id}>
+                    Order #{order.name} - {order.totalPrice} - Placed on:{" "}
+                    {new Date(order.createdAt).toLocaleDateString()}
+                    <Button
+                      onClick={() => {
+                        setIsViewingOrderDetails(true);
+                        setOrderNumber(order.name);
+                        fetcher.submit({ orderNumber: order.name }, { method: "POST" });
+                      }}
+                    >
+                      View Order
+                    </Button>
+                  </List.Item>
+                ))}
+              </List>
+            </Card>
+          </Layout.Section>
+        )}
+      </Layout>
+
+      <Modal
+        open={showAddressMismatchModal}
+        onClose={() => setShowAddressMismatchModal(false)}
+        title="Addresses do not match"
+        primaryAction={{
+          content: 'Proceed',
+          onAction: handleProceedDespiteAddressMismatch,
+        }}
+        secondaryActions={[
+          {
+            content: 'Cancel',
+            onAction: () => setShowAddressMismatchModal(false),
+          },
+        ]}
+      >
+        <Modal.Section>
+          <Text>The shipping addresses of the orders do not match. Please select an address to use for the combined order, or cancel the operation.</Text>
+          <BlockStack spacing="tight">
+            <RadioButton
+              label={`Original Address: ${renderAddress(originalAddress)}`}
+              checked={selectedAddressId === 'original'}
+              id="originalAddress"
+              name="addresses"
+              onChange={() => {
+                setSelectedAddressId('original');
+                setSelectedAddress(originalAddress);
+              }}
+            />
+            {mismatchedAddresses.map((item, index) => (
+              <RadioButton
+                key={index}
+                label={`Order #${item.orderNumber} Address: ${renderAddress(item.address)}`}
+                checked={selectedAddressId === `order${item.orderNumber}`}
+                id={`address${index}`}
+                name="addresses"
+                onChange={() => {
+                  setSelectedAddressId(`order${item.orderNumber}`);
+                  setSelectedAddress(item.address);
+                }}
+              />
+            ))}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      <style>
+        {`
+          .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(255, 255, 255, 0.7);
+            z-index: 9999;
+          }
+        `}
+      </style>
+    </Page>
   );
 }
