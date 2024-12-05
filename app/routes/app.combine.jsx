@@ -659,7 +659,7 @@ export const action = async ({ request }) => {
                 },
                 options: {
                   inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
-                  sendReceipt: true,
+                  sendReceipt: false,
                 },
               },
             }
@@ -768,7 +768,7 @@ export const action = async ({ request }) => {
                 },
                 options: {
                   inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
-                  sendReceipt: true,
+                  sendReceipt: false,
                 },
               },
             }
