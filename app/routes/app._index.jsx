@@ -96,30 +96,30 @@ export const action = async ({ request }) => {
                     variant {
                       sku
                     }
+                    fulfillableQuantity
                   }
                 }
               }
             }
           }
         }
-      }
-    `,
+      }`,
       { variables: { query: `name:${orderNumber}` } }
     );
-
+  
     const orderData = await orderResponse.json();
-
+  
     if (!orderData.data.orders.edges.length) {
       return json({ error: "Order not found" });
     }
-
+  
     const foundOrder = orderData.data.orders.edges[0].node;
-
-    // Exclude items with names starting with "Free and Easy Returns" or "Exchanges"
+  
+    // Exclude items already fulfilled
     foundOrder.lineItems.edges = foundOrder.lineItems.edges.filter(
-      ({ node }) => !node.name.startsWith("Free and Easy Returns")
+      ({ node }) => node.fulfillableQuantity > 0
     );
-
+  
     return json({ order: foundOrder });
   } catch (error) {
     return json({ error: error.message });
