@@ -117,7 +117,7 @@ export const action = async ({ request }) => {
     selectedAddress = JSON.parse(selectedAddressData);
   }
 
-  // Helper function to normalize address for comparison (case-insensitive) and include the customer's name
+  // Helper functions remain the same...
   const normalizeAddress = (address, customer) => {
     if (!address) return null;
     return {
@@ -147,7 +147,6 @@ export const action = async ({ request }) => {
   };
 
   try {
-    // Fetch the order by order number and include variant IDs and shipping address
     const orderResponse = await admin.graphql(
       `#graphql
       query getOrder($query: String!) {
@@ -203,13 +202,9 @@ export const action = async ({ request }) => {
     const shippingAddress = foundOrder.shippingAddress;
     const customerInfo = { firstName: foundOrder.customer.firstName, lastName: foundOrder.customer.lastName };
 
-    // Normalize the shipping address of the found order for comparison, including the customer name
     const normalizedOriginalAddress = normalizeAddress(shippingAddress, customerInfo);
-
-    // Extract the numeric part of the customer ID from the GID format
     const numericCustomerId = customerId.split("/").pop();
 
-    // Fetch the latest open and unfulfilled orders for the customer
     const customerOrdersResponse = await admin.graphql(
       `#graphql
       query getCustomerOrders($query: String!) {
@@ -264,7 +259,6 @@ export const action = async ({ request }) => {
       shippingAddress: normalizeAddress(edge.node.shippingAddress, customerInfo),
     }));
 
-    // If selectedOrders is provided, filter customerOrders
     if (selectedOrders.length > 0) {
       customerOrders = customerOrders.filter(order => selectedOrders.includes(order.id));
     }
@@ -290,9 +284,10 @@ export const action = async ({ request }) => {
       }
 
       const shippingAddressToUse = selectedAddress || shippingAddress;
+      const originalOrderNumbers = customerOrders.map(o => o.orderNumber);
+      const combinedFromTag = `Combined from: ${originalOrderNumbers.join(' ')}`;
 
       if (ignorePreorderSeparation) {
-        // Combine all items into a single variantQuantityMap
         const variantQuantityMap = {};
         const freeAndEasyVariantIds = new Set();
         let orderNumberSuffix = null;
@@ -326,7 +321,6 @@ export const action = async ({ request }) => {
           quantity: variantQuantityMap[variantId],
         }));
 
-        // Include 'Free and Easy Returns or Exchanges' items with quantity 1
         freeAndEasyVariantIds.forEach((variantId) => {
           combinedLineItems.push({
             variantId,
@@ -334,11 +328,8 @@ export const action = async ({ request }) => {
           });
         });
 
-        console.log("Combined Line Items:", combinedLineItems);
+        let newOrder = null;
 
-        let newOrder = null; // Initialize as null
-
-        // Create new order if there are line items
         if (combinedLineItems.length > 0) {
           const lineItems = combinedLineItems.map(item => ({
             variantId: item.variantId,
@@ -387,12 +378,12 @@ export const action = async ({ request }) => {
             {
               variables: {
                 order: {
-                  name: orderNumberSuffix, // Set the name to the first original order's order number
+                  name: orderNumberSuffix,
                   lineItems,
                   customerId,
                   shippingAddress: {
-                    firstName: customerInfo.firstName, // Include customer's first name
-                    lastName: customerInfo.lastName,   // Include customer's last name
+                    firstName: customerInfo.firstName,
+                    lastName: customerInfo.lastName,
                     address1: shippingAddress.address1,
                     address2: shippingAddress.address2,
                     city: shippingAddress.city,
@@ -401,8 +392,8 @@ export const action = async ({ request }) => {
                     zip: shippingAddress.zip,
                   },
                   billingAddress: {
-                    firstName: customerInfo.firstName, // Include customer's first name
-                    lastName: customerInfo.lastName,   // Include customer's last name
+                    firstName: customerInfo.firstName,
+                    lastName: customerInfo.lastName,
                     address1: shippingAddress.address1,
                     address2: shippingAddress.address2,
                     city: shippingAddress.city,
@@ -415,8 +406,8 @@ export const action = async ({ request }) => {
                       title: "Standard Shipping",
                       priceSet: {
                         shopMoney: {
-                          amount: "0.00", // The shipping cost as a string
-                          currencyCode: "USD", // The currency code
+                          amount: "0.00",
+                          currencyCode: "USD",
                         },
                       },
                       code: "standard",
@@ -424,7 +415,10 @@ export const action = async ({ request }) => {
                     },
                   ],
                   financialStatus: "PAID",
-                  tags: [`Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`],
+                  tags: [
+                    combinedFromTag,
+                    `Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`
+                  ],
                 },
                 options: {
                   inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
@@ -493,13 +487,12 @@ export const action = async ({ request }) => {
           completedOrder: newOrder,
         });
       } else {
-        // Combine items, separating 'PREORDER' items
-        const variantQuantityMap = {}; // For regular items
-        const preorderVariantQuantityMap = {}; // For 'PREORDER' items
-        const freeAndEasyRegularVariantIds = new Set(); // For "Free and Easy Returns or Exchanges" items in regular items
-        const freeAndEasyPreorderVariantIds = new Set(); // For "Free and Easy Returns or Exchanges" items in preorder items
+        // Combine items separating 'PREORDER' items
+        const variantQuantityMap = {}; 
+        const preorderVariantQuantityMap = {};
+        const freeAndEasyRegularVariantIds = new Set(); 
+        const freeAndEasyPreorderVariantIds = new Set();
 
-        // Variables to store the first order numbers
         let regularOrderNumber = null;
         let preorderOrderNumber = null;
 
@@ -548,7 +541,6 @@ export const action = async ({ request }) => {
           quantity: preorderVariantQuantityMap[variantId],
         }));
 
-        // Include 'Free and Easy Returns or Exchanges' items with quantity 1
         if (combinedLineItems.length > 0) {
           freeAndEasyRegularVariantIds.forEach((variantId) => {
             combinedLineItems.push({
@@ -566,10 +558,10 @@ export const action = async ({ request }) => {
           });
         }
 
-        let newRegularOrder = null; // Initialize as null
-        let newPreorderOrder = null; // Initialize as null
+        let newRegularOrder = null; 
+        let newPreorderOrder = null; 
 
-        // Create new regular order if there are regular line items
+        // Create new regular order
         if (combinedLineItems.length > 0) {
           const lineItems = combinedLineItems.map(item => ({
             variantId: item.variantId,
@@ -655,7 +647,10 @@ export const action = async ({ request }) => {
                     },
                   ],
                   financialStatus: "PAID",
-                  tags: [`Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`],
+                  tags: [
+                    combinedFromTag,
+                    `Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`
+                  ],
                 },
                 options: {
                   inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
@@ -678,7 +673,7 @@ export const action = async ({ request }) => {
           newRegularOrder = regularOrderCreateData.data.orderCreate.order;
         }
 
-        // Create new preorder order if there are preorder line items
+        // Create new preorder order
         if (preorderLineItems.length > 0) {
           const lineItems = preorderLineItems.map(item => ({
             variantId: item.variantId,
@@ -764,7 +759,10 @@ export const action = async ({ request }) => {
                     },
                   ],
                   financialStatus: "PAID",
-                  tags: [`Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`],
+                  tags: [
+                    combinedFromTag,
+                    `Combined at: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`
+                  ],
                 },
                 options: {
                   inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
