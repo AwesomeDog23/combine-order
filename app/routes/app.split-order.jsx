@@ -131,6 +131,8 @@ export const action = async ({ request }) => {
               customer {
                 id
                 email
+                firstName
+                lastName
               }
               shippingAddress {
                 address1
@@ -190,9 +192,11 @@ export const action = async ({ request }) => {
         });
       }
 
+      // Prepare line items with requiresShipping and priceSet
       const selectedLineItems = selectedItems.map((item) => ({
         variantId: item.variant.id,
         quantity: item.quantity,
+        requiresShipping: true,
         priceSet: {
           shopMoney: {
             amount: "0.00",
@@ -204,6 +208,7 @@ export const action = async ({ request }) => {
       const unselectedLineItems = unselectedItems.map((item) => ({
         variantId: item.variant.id,
         quantity: item.quantity,
+        requiresShipping: true,
         priceSet: {
           shopMoney: {
             amount: "0.00",
@@ -213,7 +218,10 @@ export const action = async ({ request }) => {
       }));
 
       const customerId = foundOrder.customer?.id;
-      const email = foundOrder.customer?.email;
+      const customerInfo = {
+        firstName: foundOrder.customer?.firstName || "",
+        lastName: foundOrder.customer?.lastName || "",
+      };
       const shippingAddress = foundOrder.shippingAddress;
 
       let newOrder1 = null;
@@ -239,8 +247,26 @@ export const action = async ({ request }) => {
                 name: `${orderNumber}-S1`,
                 lineItems: selectedLineItems,
                 customerId,
-                shippingAddress,
-                billingAddress: shippingAddress,
+                shippingAddress: {
+                  firstName: customerInfo.firstName,
+                  lastName: customerInfo.lastName,
+                  address1: shippingAddress.address1,
+                  address2: shippingAddress.address2,
+                  city: shippingAddress.city,
+                  country: shippingAddress.country,
+                  province: shippingAddress.province,
+                  zip: shippingAddress.zip,
+                },
+                billingAddress: {
+                  firstName: customerInfo.firstName,
+                  lastName: customerInfo.lastName,
+                  address1: shippingAddress.address1,
+                  address2: shippingAddress.address2,
+                  city: shippingAddress.city,
+                  country: shippingAddress.country,
+                  province: shippingAddress.province,
+                  zip: shippingAddress.zip,
+                },
                 shippingLines: [
                   {
                     title: "Standard Shipping",
@@ -300,8 +326,26 @@ export const action = async ({ request }) => {
                 name: `${orderNumber}-S2`,
                 lineItems: unselectedLineItems,
                 customerId,
-                shippingAddress,
-                billingAddress: shippingAddress,
+                shippingAddress: {
+                  firstName: customerInfo.firstName,
+                  lastName: customerInfo.lastName,
+                  address1: shippingAddress.address1,
+                  address2: shippingAddress.address2,
+                  city: shippingAddress.city,
+                  country: shippingAddress.country,
+                  province: shippingAddress.province,
+                  zip: shippingAddress.zip,
+                },
+                billingAddress: {
+                  firstName: customerInfo.firstName,
+                  lastName: customerInfo.lastName,
+                  address1: shippingAddress.address1,
+                  address2: shippingAddress.address2,
+                  city: shippingAddress.city,
+                  country: shippingAddress.country,
+                  province: shippingAddress.province,
+                  zip: shippingAddress.zip,
+                },
                 shippingLines: [
                   {
                     title: "Standard Shipping",
